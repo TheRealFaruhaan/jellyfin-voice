@@ -12,6 +12,7 @@ using Jellyfin.LiveTv.Extensions;
 using Jellyfin.LiveTv.Recordings;
 using Jellyfin.MediaEncoding.Hls.Extensions;
 using Jellyfin.Networking;
+using Jellyfin.Server.MediaAcquisition.Extensions;
 using Jellyfin.Networking.HappyEyeballs;
 using Jellyfin.Server.Extensions;
 using Jellyfin.Server.HealthChecks;
@@ -126,6 +127,9 @@ namespace Jellyfin.Server
 
             services.AddHlsPlaylistGenerator();
             services.AddLiveTvServices();
+
+            // Media Acquisition (torrent-based downloads via qBittorrent)
+            services.AddMediaAcquisition(_configuration);
 
             services.AddHostedService<RecordingsHost>();
             services.AddHostedService<AutoDiscoveryHost>();
