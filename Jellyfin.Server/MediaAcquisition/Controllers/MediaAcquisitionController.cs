@@ -55,12 +55,14 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <returns>Connection status.</returns>
     [HttpGet("Status")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<object>> GetStatus(CancellationToken cancellationToken)
+    public async Task<ActionResult<ConnectionStatusDto>> GetStatus(CancellationToken cancellationToken)
     {
         var isConnected = await _downloadManager.GetConnectionStatusAsync(cancellationToken).ConfigureAwait(false);
         var indexerStatus = await _searchService.TestIndexersAsync(cancellationToken).ConfigureAwait(false);
 
-        return Ok(new
+        _logger.LogInformation("Status check - qBittorrent connected: {IsConnected}, indexers: {IndexerCount}", isConnected, indexerStatus.Count);
+
+        return Ok(new ConnectionStatusDto
         {
             QBittorrentConnected = isConnected,
             Indexers = indexerStatus

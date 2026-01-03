@@ -23,11 +23,6 @@ namespace Jellyfin.Server.MediaAcquisition.Extensions;
 public static class MediaAcquisitionServiceCollectionExtensions
 {
     /// <summary>
-    /// The named HTTP client for qBittorrent.
-    /// </summary>
-    public const string QBittorrentHttpClient = "QBittorrent";
-
-    /// <summary>
     /// The named HTTP client for torrent indexers.
     /// </summary>
     public const string IndexerHttpClient = "TorrentIndexer";
@@ -49,23 +44,14 @@ public static class MediaAcquisitionServiceCollectionExtensions
         var options = section.Get<MediaAcquisitionOptions>();
         if (options?.Enabled != true)
         {
-            // Feature is disabled, skip registration
+            // Feature is disabled, register placeholder services so controller DI still works
+            services.AddSingleton<IMissingMediaService, DisabledMissingMediaService>();
+            services.AddSingleton<IDownloadManagerService, DisabledDownloadManagerService>();
+            services.AddSingleton<ITorrentSearchService, DisabledTorrentSearchService>();
             return services;
         }
 
-        // Register HTTP clients
-        services.AddHttpClient(QBittorrentHttpClient, client =>
-        {
-            client.DefaultRequestHeaders.Accept.Add(
-                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-        })
-        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-        {
-            AutomaticDecompression = DecompressionMethods.All,
-            UseCookies = true,
-            CookieContainer = new CookieContainer()
-        });
-
+        // Register HTTP client for indexers
         services.AddHttpClient(IndexerHttpClient, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
@@ -79,13 +65,26 @@ public static class MediaAcquisitionServiceCollectionExtensions
             AutomaticDecompression = DecompressionMethods.All
         });
 
-        // Register qBittorrent client
+        // Register qBittorrent client with its own HttpClient that persists cookies
+        // We create the HttpClient directly (not via factory) to ensure the CookieContainer
+        // is shared across all requests for session persistence
         services.AddSingleton<IQBittorrentClient>(sp =>
         {
-            var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-            var httpClient = httpClientFactory.CreateClient(QBittorrentHttpClient);
-            var logger = sp.GetRequiredService<ILogger<QBittorrentClient>>();
             var opts = sp.GetRequiredService<IOptions<MediaAcquisitionOptions>>();
+            var logger = sp.GetRequiredService<ILogger<QBittorrentClient>>();
+
+            // Create a dedicated HttpClientHandler with a persistent CookieContainer
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+                UseCookies = true,
+                CookieContainer = new CookieContainer()
+            };
+
+            var httpClient = new HttpClient(handler, disposeHandler: true);
+            httpClient.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
             return new QBittorrentClient(httpClient, logger, opts);
         });
 

@@ -269,13 +269,30 @@ public class QBittorrentClient : IQBittorrentClient, IDisposable
     {
         try
         {
-            await EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
-            var version = await GetVersionAsync(cancellationToken).ConfigureAwait(false);
+            // Force a fresh login attempt to verify connection is still alive
+            var loginSuccess = await LoginAsync(cancellationToken).ConfigureAwait(false);
+            if (!loginSuccess)
+            {
+                _logger.LogWarning("qBittorrent connection check failed: login unsuccessful");
+                return false;
+            }
+
+            var response = await _httpClient.GetAsync("app/version", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("qBittorrent version check failed with status {StatusCode}", response.StatusCode);
+                _isAuthenticated = false;
+                return false;
+            }
+
+            var version = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug("qBittorrent connection check successful, version: {Version}", version);
             return !string.IsNullOrEmpty(version);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "qBittorrent connection check failed");
+            _logger.LogWarning(ex, "qBittorrent connection check failed with exception");
+            _isAuthenticated = false;
             return false;
         }
     }
