@@ -1,45 +1,33 @@
-# Deployment Guide - Voice Chat with Metered.ca (Free TURN Server)
+# Complete Deployment Guide - Jellyfin with Cloudflare SSL, Voice Chat & Media Acquisition
 
 ## Overview
 
-This guide uses **Metered.ca** for TURN/STUN servers instead of setting up coturn. Much simpler!
+This comprehensive guide sets up:
 
-✅ **No TURN server setup needed**
-✅ **Free tier available**
-✅ **Works across all networks**
-✅ **Professional infrastructure**
-
----
-
-## Part 1: Get Your Metered.ca Credentials
-
-### Step 1: Login to Metered.ca
-
-Go to: https://dashboard.metered.ca/
-
-### Step 2: Get Your Credentials
-
-After logging in:
-
-1. Go to **Dashboard**
-2. Find your **API Key** (this is your username)
-3. Find your **Secret Key** (this is your credential)
-
-**Save these - you'll need them soon!**
-
-Example:
-
--   Username: `abc123def456`
--   Credential: `xyz789uvw012`
+- ✅ Jellyfin Media Server on HTTPS (port 443)
+- ✅ Cloudflare SSL (Full Strict mode)
+- ✅ Nginx reverse proxy
+- ✅ Voice Chat with Metered.ca TURN/STUN
+- ✅ Media Acquisition with qBittorrent & Prowlarr
+- ✅ All services secured behind SSL
 
 ---
 
-## Part 2: Build on Windows (One Time Only)
+## Prerequisites
+
+- Domain name pointed to your server via Cloudflare DNS
+- Cloudflare account with domain configured
+- Ubuntu server (20.04+ recommended)
+- Windows machine for building (or use pre-built releases)
+
+---
+
+## Part 1: Build on Windows
 
 ### Step 1: Build Jellyfin Server
 
 ```powershell
-cd "Path\To\jellyfin-voice"
+cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-master"
 
 # Publish for Linux
 dotnet publish Jellyfin.Server --configuration Release --runtime linux-x64 --self-contained true --output ./publish
@@ -50,7 +38,7 @@ dotnet publish Jellyfin.Server --configuration Release --runtime linux-x64 --sel
 ### Step 2: Build Jellyfin Web
 
 ```powershell
-cd "Path\To\jellyfin-voice-web"
+cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-web-master"
 
 # Initialize git (if not already done)
 git init
@@ -65,62 +53,44 @@ npm run build:production
 
 ---
 
-## Part 3: Transfer Files to Server
+## Part 2: Transfer Files to Server
 
-### Recommended: Use WinSCP (Easy GUI)
+### Using WinSCP (Recommended)
 
 1. **Download WinSCP**: https://winscp.net/eng/download.php
-2. **Install and open WinSCP**
-3. **Connect:**
+2. **Connect:**
+   - Host: `your.server.ip`
+   - User: `root`
+   - Password: (your server password)
+3. **Upload files:**
+   - `jellyfin-master\publish\*` → `/tmp/jellyfin-server/`
+   - `jellyfin-web-master\dist\*` → `/tmp/jellyfin-web/`
 
-    - Host: `xxx.xxx.xxx.xxx`
-    - User: `root`
-    - Password: (your server password)
-    - Click **Login**
-
-4. **Upload files:**
-
-    **Left panel** (your computer) → **Right panel** (server):
-
-    - Navigate left to: `Path\To\jellyfin-voice\publish`
-    - Navigate right to: `/tmp/jellyfin-server/`
-    - Select all files on left, drag to right
-
-    - Navigate left to: `Path\To\jellyfin-voice-web\dist`
-    - Navigate right to: `/tmp/jellyfin-web/`
-    - Select all files on left, drag to right
-
-### Alternative: Command Line (PowerShell)
+### Or Command Line (PowerShell)
 
 ```powershell
-# Create directories on server
-ssh root@217.216.109.130 "mkdir -p /tmp/jellyfin-server /tmp/jellyfin-web"
+ssh root@your.server.ip "mkdir -p /tmp/jellyfin-server /tmp/jellyfin-web"
 
-# Transfer server files
-scp -r "Path\To\jellyfin-voice\publish\*" root@217.216.109.130:/tmp/jellyfin-server/
-
-# Transfer web files
-scp -r "Path\To\jellyfin-voice-web\dist\*" root@217.216.109.130:/tmp/jellyfin-web/
+scp -r "C:\path\to\jellyfin-master\publish\*" root@your.server.ip:/tmp/jellyfin-server/
+scp -r "C:\path\to\jellyfin-web-master\dist\*" root@your.server.ip:/tmp/jellyfin-web/
 ```
 
 ---
 
-## Part 4: Install on Ubuntu Server
+## Part 3: Install on Ubuntu Server
 
 SSH into your server:
 
 ```bash
-ssh root@your.ip
+ssh root@your.server.ip
 ```
 
 ### Step 1: Install Prerequisites
 
 ```bash
 sudo apt update
-sudo apt install -y ffmpeg libssl-dev libcurl4-openssl-dev
+sudo apt install -y ffmpeg libssl-dev libcurl4-openssl-dev nginx certbot python3-certbot-nginx curl sqlite3
 ```
-
-**Note:** No need to install coturn! We're using Metered.ca.
 
 ### Step 2: Create Jellyfin User & Directories
 
@@ -148,17 +118,21 @@ sudo chmod +x /opt/jellyfin/jellyfin
 
 ---
 
-## Part 5: Configure Voice Chat with Metered.ca
+## Part 4: Configure Voice Chat with Metered.ca
 
-### Step 1: Create Configuration File
+### Step 1: Get Metered.ca Credentials
+
+1. Go to: https://dashboard.metered.ca/
+2. Login/create account
+3. Get your **API Key** (username) and **Secret Key** (credential)
+
+### Step 2: Create Voice Chat Configuration
 
 ```bash
 sudo nano /etc/jellyfin/voicechat.json
 ```
 
-### Step 2: Paste This Configuration
-
-**Replace** `YOUR_METERED_USERNAME` and `YOUR_METERED_CREDENTIAL` with your actual values from Part 1:
+Paste (replace credentials):
 
 ```json
 {
@@ -171,9 +145,14 @@ sudo nano /etc/jellyfin/voicechat.json
             "CredentialType": "password"
         },
         {
-            "Urls": ["turn:global.relay.metered.ca:80", "turn:global.relay.metered.ca:80?transport=tcp", "turn:global.relay.metered.ca:443", "turns:global.relay.metered.ca:443?transport=tcp"],
-            "Username": "abc123def456",
-            "Credential": "xyz789uvw012",
+            "Urls": [
+                "turn:global.relay.metered.ca:80",
+                "turn:global.relay.metered.ca:80?transport=tcp",
+                "turn:global.relay.metered.ca:443",
+                "turns:global.relay.metered.ca:443?transport=tcp"
+            ],
+            "Username": "YOUR_METERED_USERNAME",
+            "Credential": "YOUR_METERED_CREDENTIAL",
             "CredentialType": "password"
         }
     ],
@@ -182,9 +161,7 @@ sudo nano /etc/jellyfin/voicechat.json
 }
 ```
 
-**Save:** Press `Ctrl+X`, then `Y`, then `Enter`
-
-### Step 3: Set Permissions
+Save and set permissions:
 
 ```bash
 sudo chown jellyfin:jellyfin /etc/jellyfin/voicechat.json
@@ -193,25 +170,13 @@ sudo chmod 644 /etc/jellyfin/voicechat.json
 
 ---
 
-## Part 6: Configure Firewall
-
-Only need to open Jellyfin's port (no TURN server ports needed):
-
-```bash
-sudo ufw allow 8096/tcp
-sudo ufw enable
-sudo ufw status
-```
-
----
-
-## Part 7: Create Jellyfin Service
+## Part 5: Configure Jellyfin Service
 
 ```bash
 sudo nano /etc/systemd/system/jellyfin.service
 ```
 
-Paste this:
+Paste:
 
 ```ini
 [Unit]
@@ -236,11 +201,7 @@ TimeoutSec=15
 WantedBy=multi-user.target
 ```
 
-**Save:** `Ctrl+X`, `Y`, `Enter`
-
----
-
-## Part 8: Start Jellyfin
+Save and start:
 
 ```bash
 sudo systemctl daemon-reload
@@ -249,254 +210,72 @@ sudo systemctl enable jellyfin
 sudo systemctl status jellyfin
 ```
 
-You should see: **Active: active (running)**
-
-### Check Logs
+Check it's running:
 
 ```bash
-sudo journalctl -u jellyfin -f
+curl http://localhost:8096
 ```
 
-Look for:
+---
 
--   `Loaded voice chat configuration from /etc/jellyfin/voicechat.json` ✅
--   No errors
+## Part 6: Configure Cloudflare
 
-Press `Ctrl+C` to exit logs.
+### Step 1: Set DNS Records
+
+In Cloudflare dashboard for your domain:
+
+1. **A Record:**
+   - Name: `vstream` (or your subdomain)
+   - Type: `A`
+   - Content: `your.server.ip`
+   - Proxy status: **Proxied** (orange cloud ON)
+   - TTL: Auto
+
+This creates: `vstream.yourdomain.com`
+
+### Step 2: Configure SSL/TLS Mode
+
+1. Go to **SSL/TLS** tab
+2. Select **Full (strict)** encryption mode
 
 ---
 
-## Part 9: Access Jellyfin
+## Part 7: Get SSL Certificate (Cloudflare Origin)
 
-1. Open browser: `http://your.ip:8096`
-2. Complete the setup wizard:
-    - Choose language
-    - Create admin account
-    - Set up media libraries (optional for now)
-    - Finish setup
+### Step 1: Create Origin Certificate
 
----
+1. In Cloudflare → **SSL/TLS** → **Origin Server**
+2. Click **Create Certificate**
+3. Keep defaults (RSA, 15 years)
+4. Click **Create**
+5. Copy **Origin Certificate** and **Private Key**
 
-## Part 10: Test Voice Chat! 🎉
+### Step 2: Install Certificate on Server
 
-### Setup
-
-1. **Browser 1** (your computer):
-
-    - Login to Jellyfin
-    - Go to any video
-    - Click the SyncPlay button (people icon)
-    - Create a new group
-
-2. **Browser 2** (another device or incognito window):
-    - Login to Jellyfin
-    - Go to the same video
-    - Click SyncPlay
-    - Join the group
-
-### Test Voice Chat
-
-In both browsers:
-
-1. Look for "Join Voice Chat" button (you may need to integrate the UI first - see integration guide)
-2. Click it
-3. Allow microphone permissions
-4. Start talking - you should hear each other!
-
----
-
-## Updating Configuration Later
-
-Need to change settings? Easy:
+Save certificate:
 
 ```bash
-# Edit config
-sudo nano /etc/jellyfin/voicechat.json
-
-# Make your changes, save
-
-# Restart Jellyfin
-sudo systemctl restart jellyfin
+sudo nano /etc/ssl/certs/cloudflare-origin.pem
+# Paste the Origin Certificate
+# Save: Ctrl+X, Y, Enter
 ```
 
-**No rebuild needed!** 🎉
-
-## To Update Full Server Binary With Web UI
-
-1. Build the server using the following command
-
-```powershell
-cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-master"
-
-# Publish for Linux
-dotnet publish Jellyfin.Server --configuration Release --runtime linux-x64 --self-contained true --output ./publish
-```
-
-2. Build the Web UI
-
-```powershell
-cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-web-master"
-
-# Build NPM
-npm run build:production
-```
-
-3. Copy and replace the contents in the `dist` folder inside web master folder to `publish\jellyfin-web` folder inside jellyfin master folder
-4. Zip all the files inside `publish` folder
-5. Copy the zip file to server `/tmp/jellyfin-server` folder
-6. Run the following commands:
+Save private key:
 
 ```bash
-unzip publish.zip
-rm publish.zip
-sudo systemctl stop jellyfin
-sudo rm -rf /opt/jellyfin/*
-sudo mv /tmp/jellyfin-server/* /opt/jellyfin/
-sudo chown -R jellyfin:jellyfin /opt/jellyfin
-sudo chown -R jellyfin:jellyfin /opt/jellyfin/jellyfin-web
-sudo chmod +x /opt/jellyfin/jellyfin
-sudo systemctl start jellyfin
-sudo systemctl restart nginx
+sudo nano /etc/ssl/private/cloudflare-origin.key
+# Paste the Private Key
+# Save: Ctrl+X, Y, Enter
+
+# Secure the key
+sudo chmod 600 /etc/ssl/private/cloudflare-origin.key
 ```
 
 ---
 
-## Troubleshooting
+## Part 8: Install and Configure Prowlarr
 
-### Can't Access Jellyfin
-
-```bash
-# Check if running
-sudo systemctl status jellyfin
-
-# Check logs
-sudo journalctl -u jellyfin -n 50
-
-# Check firewall
-sudo ufw status
-```
-
-### Voice Chat Not Working
-
-1. **Check config loaded:**
-
-    ```bash
-    sudo journalctl -u jellyfin | grep "voice chat"
-    ```
-
-    Should see: `Loaded voice chat configuration`
-
-2. **Verify config file:**
-
-    ```bash
-    cat /etc/jellyfin/voicechat.json
-    ```
-
-    Check credentials are correct
-
-3. **Test in browser console (F12):**
-
-    - Should see WebRTC connections being established
-    - Check for errors
-
-4. **Verify Metered.ca credentials:**
-    - Login to dashboard.metered.ca
-    - Check API key and secret are correct
-    - Check free tier limits haven't been exceeded
-
-### No Audio
-
--   Grant microphone permissions in browser
--   Check browser console for errors
--   Use headphones to avoid feedback
--   Test with https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
-    -   Add your Metered.ca TURN server
-    -   Should see "relay" candidates
-
----
-
-## What You Saved
-
-By using Metered.ca instead of self-hosted coturn:
-
-✅ **No TURN server setup** - Saved 30+ minutes
-✅ **No firewall complexity** - Only port 8096 needed
-✅ **No maintenance** - Metered handles updates
-✅ **Professional infrastructure** - Better reliability
-✅ **Free tier** - 50GB/month bandwidth included
-
----
-
-## Quick Reference
-
-```bash
-# Restart Jellyfin
-sudo systemctl restart jellyfin
-
-# View logs
-sudo journalctl -u jellyfin -f
-
-# Edit voice chat config
-sudo nano /etc/jellyfin/voicechat.json
-
-# Check status
-sudo systemctl status jellyfin
-
-# View config
-cat /etc/jellyfin/voicechat.json
-```
-
----
-
-## Summary
-
-✅ Jellyfin server running on Ubuntu
-✅ Voice chat configured with Metered.ca
-✅ No TURN server to maintain
-✅ Works across all networks
-✅ Free tier included
-
-**Next Step:** Follow the **VOICE_CHAT_INTEGRATION.md** guide to integrate the voice chat UI with SyncPlay!
-
----
-
-## Metered.ca Free Tier Limits
-
--   **50GB/month** bandwidth
--   **Unlimited** concurrent connections
--   **Global** relay servers
-
-Perfect for testing and small deployments! Upgrade if you need more.
-
-**Your deployment is complete!** 🚀
-
----
-
-## Part 11: Media Acquisition Setup (Optional)
-
-The Media Acquisition module allows you to search for and download missing TV episodes and movies using qBittorrent and Prowlarr/Jackett indexers.
-
-### Prerequisites
-
-1. **qBittorrent** with Web UI enabled
-2. **Prowlarr** (recommended) or Jackett for indexer management
-
----
-
-### Step 1: Install and Configure Prowlarr
-
-#### Install Prowlarr on Ubuntu
-
-```bash
-# Install dependencies
-sudo apt install curl sqlite3
-
-# Download and run the official installer
-curl -o /tmp/prowlarr-install.sh https://raw.githubusercontent.com/Servarr/Wiki/master/assets/scripts/servarr-install-script.sh
-sudo bash /tmp/prowlarr-install.sh prowlarr
-```
-
-**Alternative: Manual Installation**
+### Step 1: Install Prowlarr
 
 ```bash
 # Create user and directories
@@ -534,43 +313,26 @@ sudo systemctl start prowlarr
 sudo systemctl enable prowlarr
 ```
 
-Prowlarr will be available at: `http://your.ip:9696`
+Prowlarr is now running at: `http://localhost:9696`
 
-#### Configure Prowlarr
+### Step 2: Configure Prowlarr
 
-1. **Open Prowlarr**: `http://your.ip:9696`
-2. **Complete initial setup** (create username/password)
-3. **Add Indexers**:
-   - Go to **Indexers** → **Add Indexer**
-   - Search for your preferred trackers (e.g., 1337x, RARBG, etc.)
-   - Configure each indexer with required credentials
-4. **Get API Key**:
-   - Go to **Settings** → **General**
-   - Copy the **API Key** (you'll need this for Jellyfin)
-
-#### Open Firewall for Prowlarr (if needed locally only)
-
-```bash
-# Only if you need external access to Prowlarr
-sudo ufw allow 9696/tcp
-```
+1. Open `http://your.server.ip:9696` (temporarily, we'll proxy later)
+2. Complete initial setup (create username/password)
+3. Add indexers: **Indexers** → **Add Indexer**
+4. Get API Key: **Settings** → **General** → Copy **API Key**
 
 ---
 
-### Step 2: Install and Configure qBittorrent
+## Part 9: Install and Configure qBittorrent
 
-#### Install qBittorrent on Ubuntu
+### Step 1: Install qBittorrent
 
 ```bash
-sudo apt install qbittorrent-nox
+sudo apt install -y qbittorrent-nox
 
 # Create systemd service
-sudo nano /etc/systemd/system/qbittorrent.service
-```
-
-Paste this service configuration:
-
-```ini
+sudo tee /etc/systemd/system/qbittorrent.service > /dev/null << 'EOF'
 [Unit]
 Description=qBittorrent-nox
 After=network.target
@@ -585,39 +347,202 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Start qBittorrent:
-
-```bash
+# Start and enable
 sudo systemctl daemon-reload
 sudo systemctl start qbittorrent
 sudo systemctl enable qbittorrent
 ```
 
-qBittorrent Web UI will be available at: `http://your.ip:8080`
+qBittorrent Web UI: `http://localhost:8080`
 
 **Default credentials:**
 - Username: `admin`
 - Password: `adminadmin`
 
-**Important:** Change the default password immediately!
-
-1. Open `http://your.ip:8080`
-2. Go to **Tools** → **Options** → **Web UI**
-3. Change the password
+**Important:** Change the default password!
 
 ---
 
-### Step 3: Configure Jellyfin Media Acquisition
+## Part 10: Configure Nginx Reverse Proxy (All Services)
 
-Create the Media Acquisition configuration file:
+### Step 1: Create Nginx Configuration
 
 ```bash
-sudo nano /etc/jellyfin/mediaacquisition.json
+sudo nano /etc/nginx/sites-available/jellyfin
 ```
 
-Paste this configuration (update with your credentials):
+Paste this complete configuration:
+
+```nginx
+# Upstreams
+upstream jellyfin_backend {
+    server 127.0.0.1:8096;
+}
+
+upstream prowlarr_backend {
+    server 127.0.0.1:9696;
+}
+
+upstream qbittorrent_backend {
+    server 127.0.0.1:8080;
+}
+
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name vstream.yourdomain.com prow.yourdomain.com qbit.yourdomain.com;
+    return 301 https://$server_name$request_uri;
+}
+
+# Jellyfin HTTPS
+server {
+    listen 443 ssl http2;
+    server_name vstream.yourdomain.com;
+
+    # SSL Configuration
+    ssl_certificate /etc/ssl/certs/cloudflare-origin.pem;
+    ssl_certificate_key /etc/ssl/private/cloudflare-origin.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Max upload size
+    client_max_body_size 20G;
+
+    # Main proxy
+    location / {
+        proxy_pass http://jellyfin_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+    }
+
+    # SSE endpoint
+    location /System/Events {
+        proxy_pass http://jellyfin_backend/System/Events;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        chunked_transfer_encoding off;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+}
+
+# Prowlarr HTTPS
+server {
+    listen 443 ssl http2;
+    server_name prow.yourdomain.com;
+
+    ssl_certificate /etc/ssl/certs/cloudflare-origin.pem;
+    ssl_certificate_key /etc/ssl/private/cloudflare-origin.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # Prowlarr authentication is built-in
+    location / {
+        proxy_pass http://prowlarr_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+# qBittorrent HTTPS
+server {
+    listen 443 ssl http2;
+    server_name qbit.yourdomain.com;
+
+    ssl_certificate /etc/ssl/certs/cloudflare-origin.pem;
+    ssl_certificate_key /etc/ssl/private/cloudflare-origin.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # qBittorrent authentication is built-in
+    location / {
+        proxy_pass http://qbittorrent_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # For large file uploads
+        client_max_body_size 100M;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+**Replace `yourdomain.com` with your actual domain!**
+
+### Step 2: Add DNS Records in Cloudflare
+
+Add these A records (all pointing to your server IP, Proxied):
+- `vstream` → your.server.ip
+- `prow` → your.server.ip
+- `qbit` → your.server.ip
+
+### Step 3: Enable and Test
+
+```bash
+# Enable the site
+sudo ln -sf /etc/nginx/sites-available/jellyfin /etc/nginx/sites-enabled/
+
+# Remove default site
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test configuration
+sudo nginx -t
+
+# If OK, restart Nginx
+sudo systemctl restart nginx
+sudo systemctl enable nginx
+```
+
+---
+
+## Part 11: Configure Media Acquisition in Jellyfin
+
+### Step 1: Create Configuration
+
+```bash
+sudo nano /etc/jellyfin/appsettings.json
+```
+
+Add or merge this configuration:
 
 ```json
 {
@@ -647,44 +572,11 @@ Paste this configuration (update with your credentials):
 Set permissions:
 
 ```bash
-sudo chown jellyfin:jellyfin /etc/jellyfin/mediaacquisition.json
-sudo chmod 644 /etc/jellyfin/mediaacquisition.json
+sudo chown jellyfin:jellyfin /etc/jellyfin/appsettings.json
+sudo chmod 644 /etc/jellyfin/appsettings.json
 ```
 
----
-
-### Step 4: Update Jellyfin Configuration
-
-Add the Media Acquisition settings to your main Jellyfin config:
-
-```bash
-sudo nano /etc/jellyfin/appsettings.json
-```
-
-Add the MediaAcquisition section:
-
-```json
-{
-  "MediaAcquisition": {
-    "Enabled": true,
-    "QBittorrentUrl": "http://localhost:8080",
-    "QBittorrentUsername": "admin",
-    "QBittorrentPassword": "YOUR_QBITTORRENT_PASSWORD",
-    "AutoImportEnabled": true,
-    "Indexers": [
-      {
-        "Name": "Prowlarr",
-        "BaseUrl": "http://localhost:9696",
-        "ApiKey": "YOUR_PROWLARR_API_KEY",
-        "Enabled": true,
-        "Priority": 1
-      }
-    ]
-  }
-}
-```
-
-Restart Jellyfin:
+### Step 2: Restart Jellyfin
 
 ```bash
 sudo systemctl restart jellyfin
@@ -692,140 +584,250 @@ sudo systemctl restart jellyfin
 
 ---
 
-### Step 5: Using Media Acquisition
+## Part 12: Configure Firewall
 
-1. **Access the Dashboard**: Login as an admin user
-2. **Navigate to Downloads**: In the admin dashboard sidebar, click "Media Acquisition"
-3. **View Missing Episodes**: The "Missing Episodes" tab shows all virtual/missing episodes
-4. **Search for Torrents**: Click on a missing episode to search for available torrents
-5. **Start Download**: Select a torrent result to start downloading via qBittorrent
-6. **Monitor Progress**: The "Active Downloads" tab shows real-time download progress
-7. **Auto-Import**: Completed downloads are automatically imported into your library
+```bash
+# Allow HTTP and HTTPS
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 
----
+# Allow SSH (important!)
+sudo ufw allow 22/tcp
 
-### Media Acquisition Configuration Options
+# Enable firewall
+sudo ufw enable
+sudo ufw status
+```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `Enabled` | Enable/disable the module | `false` |
-| `QBittorrentUrl` | qBittorrent Web UI URL | `http://localhost:8080` |
-| `QBittorrentUsername` | qBittorrent username | `admin` |
-| `QBittorrentPassword` | qBittorrent password | (required) |
-| `AutoImportEnabled` | Auto-import completed downloads | `true` |
-| `Indexers` | Array of Torznab indexers | `[]` |
-
-### Indexer Configuration Options
-
-| Option | Description |
-|--------|-------------|
-| `Name` | Display name for the indexer |
-| `BaseUrl` | Indexer API URL |
-| `ApiKey` | API key for authentication |
-| `Enabled` | Enable/disable this indexer |
-| `Priority` | Search priority (lower = higher priority) |
+**Note:** Ports 8096, 8080, 9696 are NOT exposed - only accessible via Nginx proxy.
 
 ---
 
-### Adding Multiple Indexers
+## Part 13: Configure Cloudflare Settings
 
-You can add multiple indexers for better search coverage:
+### SSL/TLS Settings
 
-```json
-{
-  "MediaAcquisition": {
-    "Enabled": true,
-    "QBittorrentUrl": "http://localhost:8080",
-    "QBittorrentUsername": "admin",
-    "QBittorrentPassword": "your_password",
-    "AutoImportEnabled": true,
-    "Indexers": [
-      {
-        "Name": "Prowlarr",
-        "BaseUrl": "http://localhost:9696",
-        "ApiKey": "prowlarr_api_key",
-        "Enabled": true,
-        "Priority": 1
-      },
-      {
-        "Name": "Jackett",
-        "BaseUrl": "http://localhost:9117",
-        "ApiKey": "jackett_api_key",
-        "Enabled": true,
-        "Priority": 2
-      }
-    ]
-  }
-}
+1. **Encryption mode**: Full (strict) ✅
+2. **Always Use HTTPS**: ON
+3. **Automatic HTTPS Rewrites**: ON
+4. **Minimum TLS Version**: 1.2
+
+### Speed Settings (Optional)
+
+1. **Auto Minify**: Enable HTML, CSS, JS
+2. **Brotli**: ON
+3. **HTTP/2**: ON
+4. **HTTP/3**: ON
+
+---
+
+## Part 14: Test Your Setup
+
+### Test All Services
+
+```bash
+# Check all services are running
+sudo systemctl status jellyfin prowlarr qbittorrent nginx
+```
+
+### Access URLs
+
+- **Jellyfin**: `https://vstream.yourdomain.com`
+- **Prowlarr**: `https://prow.yourdomain.com`
+- **qBittorrent**: `https://qbit.yourdomain.com`
+
+All should show:
+- ✅ Padlock icon (SSL working)
+- ✅ No certificate warnings
+
+### Test Voice Chat
+
+1. Login to Jellyfin as two different users
+2. Start SyncPlay on a video
+3. Join Voice Chat
+4. Grant microphone permissions
+5. Test audio!
+
+### Test Media Acquisition
+
+1. Login as admin to Jellyfin
+2. Navigate to Dashboard → Media Acquisition
+3. View Missing Episodes tab
+4. Search for torrents
+5. Start a download
+6. Monitor progress in Active Downloads
+
+---
+
+## Quick Reference
+
+### Service Commands
+
+```bash
+# Status
+sudo systemctl status jellyfin prowlarr qbittorrent nginx
+
+# Restart all
+sudo systemctl restart jellyfin prowlarr qbittorrent nginx
+
+# View logs
+sudo journalctl -u jellyfin -f
+sudo journalctl -u prowlarr -f
+sudo journalctl -u qbittorrent -f
+sudo tail -f /var/log/nginx/error.log
+```
+
+### Configuration Files
+
+```
+/etc/jellyfin/voicechat.json          # Voice chat config
+/etc/jellyfin/appsettings.json        # Media acquisition config
+/etc/nginx/sites-available/jellyfin   # Nginx reverse proxy
+/var/lib/prowlarr/config.xml          # Prowlarr config
+```
+
+### SSL Certificates
+
+```
+/etc/ssl/certs/cloudflare-origin.pem     # Origin certificate
+/etc/ssl/private/cloudflare-origin.key   # Private key
 ```
 
 ---
 
-### Troubleshooting Media Acquisition
+## Updating Jellyfin
 
-#### Check if Module is Loaded
+### Full Update Procedure
+
+1. **Build on Windows:**
+
+```powershell
+cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-master"
+dotnet publish Jellyfin.Server --configuration Release --runtime linux-x64 --self-contained true --output ./publish
+
+cd "C:\Users\faruh\OneDrive\Documents\Projects\media-server\jellyfin-web-master"
+npm run build:production
+```
+
+2. **Copy web to publish folder**, then zip and upload to server
+
+3. **On server:**
 
 ```bash
+cd /tmp/jellyfin-server
+unzip publish.zip
+rm publish.zip
+sudo systemctl stop jellyfin
+sudo rm -rf /opt/jellyfin/*
+sudo mv /tmp/jellyfin-server/* /opt/jellyfin/
+sudo chown -R jellyfin:jellyfin /opt/jellyfin
+sudo chmod +x /opt/jellyfin/jellyfin
+sudo systemctl start jellyfin
+sudo systemctl restart nginx
+```
+
+---
+
+## Troubleshooting
+
+### Can't Access HTTPS Site
+
+```bash
+# Check Nginx
+sudo nginx -t
+sudo systemctl status nginx
+
+# Check SSL certificates
+sudo ls -la /etc/ssl/certs/cloudflare-origin.pem
+sudo ls -la /etc/ssl/private/cloudflare-origin.key
+
+# Check Nginx logs
+sudo tail -f /var/log/nginx/error.log
+```
+
+### Voice Chat Not Working
+
+1. Ensure HTTPS (required for microphone access)
+2. Check browser console for errors
+3. Verify Metered.ca credentials in `/etc/jellyfin/voicechat.json`
+4. Test TURN server at: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
+
+### Media Acquisition Issues
+
+```bash
+# Check module loaded
 sudo journalctl -u jellyfin | grep -i "media acquisition"
-```
 
-#### Test qBittorrent Connection
-
-```bash
-# Check if qBittorrent is running
+# Test qBittorrent
 curl -s http://localhost:8080/api/v2/app/version
-```
 
-#### Test Prowlarr Connection
-
-```bash
-# Check if Prowlarr is running
+# Test Prowlarr
 curl -s "http://localhost:9696/api/v1/health?apikey=YOUR_API_KEY"
 ```
 
-#### Common Issues
+### Common Media Acquisition Issues
 
 1. **"Failed to authenticate with qBittorrent"**
    - Verify username/password are correct
-   - Check qBittorrent Web UI is enabled and accessible
+   - Check qBittorrent Web UI is enabled
 
 2. **"No search results"**
-   - Verify Prowlarr has working indexers configured
+   - Verify Prowlarr has working indexers
    - Check Prowlarr API key is correct
-   - Test search directly in Prowlarr UI
+   - Test search directly in Prowlarr
 
 3. **"Download not starting"**
-   - Check qBittorrent has sufficient disk space
+   - Check qBittorrent disk space
    - Verify download path is writable
-   - Check qBittorrent logs for errors
 
 ---
 
-### Quick Reference - Media Acquisition
+## Security Checklist
 
-```bash
-# Restart all services
-sudo systemctl restart jellyfin qbittorrent prowlarr
+- ✅ HTTPS only (port 80 redirects to 443)
+- ✅ Cloudflare DDoS protection enabled
+- ✅ Strong SSL configuration (TLS 1.2+)
+- ✅ Security headers enabled
+- ✅ Internal ports not exposed (8096, 8080, 9696)
+- ✅ Firewall configured (only 80, 443, 22)
+- ✅ Origin Certificate (Cloudflare → Server encrypted)
+- ✅ Changed default passwords for all services
+- ✅ Media Acquisition is admin-only
 
-# View Jellyfin logs
-sudo journalctl -u jellyfin -f
+---
 
-# View qBittorrent logs
-sudo journalctl -u qbittorrent -f
+## Architecture Summary
 
-# View Prowlarr logs
-sudo journalctl -u prowlarr -f
+```
+Internet
+   ↓
+Cloudflare (SSL, DDoS Protection)
+   ↓
+Your Server
+   ↓
+Nginx (Port 443, SSL)
+   ├── vstream.domain.com → Jellyfin (8096)
+   ├── prow.domain.com → Prowlarr (9696)
+   └── qbit.domain.com → qBittorrent (8080)
 
-# Check service status
-sudo systemctl status jellyfin qbittorrent prowlarr
+Voice Chat: WebRTC via Metered.ca TURN/STUN
+Media Acquisition: Prowlarr → qBittorrent → Auto-import
 ```
 
 ---
 
-### Security Considerations
+## Summary
 
-1. **Change default passwords** for qBittorrent and Prowlarr
-2. **Use localhost URLs** when services are on the same machine
-3. **Don't expose qBittorrent/Prowlarr** to the internet unless necessary
-4. **Use a VPN** for torrent downloads if required in your jurisdiction
-5. **Media Acquisition is admin-only** - regular users cannot access it
+✅ **Jellyfin on HTTPS** - Secure media streaming
+✅ **Cloudflare SSL** - Full (strict) encryption
+✅ **Nginx reverse proxy** - All services behind SSL
+✅ **Voice Chat** - Metered.ca TURN/STUN configured
+✅ **Media Acquisition** - Prowlarr + qBittorrent integration
+✅ **Production ready** - Secure and scalable
+
+**Your services are accessible at:**
+- Jellyfin: `https://vstream.yourdomain.com`
+- Prowlarr: `https://prow.yourdomain.com`
+- qBittorrent: `https://qbit.yourdomain.com`
+
+🚀 **Deployment complete!**
