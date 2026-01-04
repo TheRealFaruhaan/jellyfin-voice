@@ -139,6 +139,42 @@ public class TorznabIndexer : ITorrentIndexer
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IEnumerable<TorrentSearchResult>> SearchByQueryAsync(
+        string query,
+        string category = "movie",
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<TorrentSearchResult>();
+
+        try
+        {
+            var searchType = category.Equals("tv", StringComparison.OrdinalIgnoreCase) ? "tvsearch" : "movie";
+            var categories = category.Equals("tv", StringComparison.OrdinalIgnoreCase)
+                ? $"{CategoryTvHd},{CategoryTvSd},{CategoryTv4K}"
+                : $"{CategoryMoviesHd},{CategoryMoviesSd},{CategoryMovies4K}";
+
+            var url = BuildSearchUrl(searchType, new Dictionary<string, string>
+            {
+                ["q"] = query,
+                ["cat"] = categories
+            }, null);
+
+            var response = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+            results.AddRange(ParseResults(response));
+
+            _logger.LogDebug(
+                "Torznab query search for '{Query}' (category: {Category}) returned {Count} results from {Indexer}",
+                query, category, results.Count, Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to search {Indexer} with query '{Query}'", Name, query);
+        }
+
+        return results;
+    }
+
     private string BuildSearchUrl(string searchType, Dictionary<string, string> parameters, IDictionary<string, string>? providerIds)
     {
         var url = $"{_config.BaseUrl.TrimEnd('/')}/api?apikey={_config.ApiKey}&t={searchType}";

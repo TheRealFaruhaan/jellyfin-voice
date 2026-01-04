@@ -23,9 +23,9 @@ namespace Emby.Server.Implementations.SyncPlay
         private readonly ILogger<VoiceChatManager> _logger;
         private readonly ISessionManager _sessionManager;
         private readonly IApplicationPaths _appPaths;
-        private VoiceChatConfiguration _configuration = null!;
         private readonly ConcurrentDictionary<Guid, VoiceChatState> _voiceChatStates;
         private readonly string _configFilePath;
+        private VoiceChatConfiguration _configuration = null!;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VoiceChatManager"/> class.

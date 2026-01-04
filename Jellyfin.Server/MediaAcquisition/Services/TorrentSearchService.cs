@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Server.MediaAcquisition.Indexers;
+using Jellyfin.Server.MediaAcquisition.Utils;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -223,5 +224,119 @@ public class TorrentSearchService : ITorrentSearchService
         }
 
         return results;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TorrentSearchResult>> SearchSeasonByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(seriesName))
+        {
+            return Array.Empty<TorrentSearchResult>();
+        }
+
+        _logger.LogInformation("Searching for season: {Series} Season {Season}", seriesName, seasonNumber);
+
+        var patterns = SearchPatternGenerator.GenerateSeasonPatterns(seriesName, seasonNumber);
+        return await SearchByPatternsAsync(patterns, "tv", cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TorrentSearchResult>> SearchEpisodeByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        int episodeNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(seriesName))
+        {
+            return Array.Empty<TorrentSearchResult>();
+        }
+
+        _logger.LogInformation(
+            "Searching for episode by name: {Series} S{Season:D2}E{Episode:D2}",
+            seriesName, seasonNumber, episodeNumber);
+
+        var patterns = SearchPatternGenerator.GenerateEpisodePatterns(seriesName, seasonNumber, episodeNumber);
+        return await SearchByPatternsAsync(patterns, "tv", cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TorrentSearchResult>> SearchByQueryAsync(
+        string query,
+        string category = "movie",
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Array.Empty<TorrentSearchResult>();
+        }
+
+        _logger.LogInformation("Searching with custom query: {Query} (category: {Category})", query, category);
+
+        var allResults = new List<TorrentSearchResult>();
+        var enabledIndexers = _indexers.Where(i => i.IsEnabled).OrderBy(i => i.Priority);
+
+        var searchTasks = enabledIndexers.Select(async indexer =>
+        {
+            try
+            {
+                var results = await indexer.SearchByQueryAsync(query, category, cancellationToken).ConfigureAwait(false);
+                return results.ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to search indexer {Indexer} with query", indexer.Name);
+                return new List<TorrentSearchResult>();
+            }
+        });
+
+        var results = await Task.WhenAll(searchTasks).ConfigureAwait(false);
+
+        foreach (var resultSet in results)
+        {
+            allResults.AddRange(resultSet);
+        }
+
+        return DeduplicateAndSort(allResults);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TorrentSearchResult>> SearchByPatternsAsync(
+        IEnumerable<string> patterns,
+        string category = "movie",
+        CancellationToken cancellationToken = default)
+    {
+        var patternList = patterns.ToList();
+        if (patternList.Count == 0)
+        {
+            return Array.Empty<TorrentSearchResult>();
+        }
+
+        _logger.LogDebug("Searching with {Count} patterns: {Patterns}", patternList.Count, string.Join(", ", patternList));
+
+        var allResults = new List<TorrentSearchResult>();
+
+        // Search each pattern and aggregate results
+        foreach (var pattern in patternList)
+        {
+            var results = await SearchByQueryAsync(pattern, category, cancellationToken).ConfigureAwait(false);
+            allResults.AddRange(results);
+        }
+
+        return DeduplicateAndSort(allResults);
+    }
+
+    private static IReadOnlyList<TorrentSearchResult> DeduplicateAndSort(List<TorrentSearchResult> results)
+    {
+        return results
+            .GroupBy(r => r.InfoHash ?? r.MagnetLink)
+            .Select(g => g.OrderByDescending(r => r.Seeders).First())
+            .OrderByDescending(r => r.Seeders)
+            .ToList();
     }
 }

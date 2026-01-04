@@ -60,4 +60,16 @@ public interface ITorrentIndexer
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>True if the connection is successful.</returns>
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for torrents with a custom query.
+    /// </summary>
+    /// <param name="query">The search query.</param>
+    /// <param name="category">The category ("movie" or "tv").</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>List of search results.</returns>
+    Task<IEnumerable<TorrentSearchResult>> SearchByQueryAsync(
+        string query,
+        string category = "movie",
+        CancellationToken cancellationToken = default);
 }

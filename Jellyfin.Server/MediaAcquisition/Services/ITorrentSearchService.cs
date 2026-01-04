@@ -53,4 +53,58 @@ public interface ITorrentSearchService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>Dictionary of indexer names and their connection status.</returns>
     Task<IDictionary<string, bool>> TestIndexersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for season torrents by name.
+    /// </summary>
+    /// <param name="seriesName">The series name.</param>
+    /// <param name="seasonNumber">The season number.</param>
+    /// <param name="providerIds">Optional provider IDs for better matching.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>List of search results from all indexers.</returns>
+    Task<IReadOnlyList<TorrentSearchResult>> SearchSeasonByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for episode torrents by name.
+    /// </summary>
+    /// <param name="seriesName">The series name.</param>
+    /// <param name="seasonNumber">The season number.</param>
+    /// <param name="episodeNumber">The episode number.</param>
+    /// <param name="providerIds">Optional provider IDs for better matching.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>List of search results from all indexers.</returns>
+    Task<IReadOnlyList<TorrentSearchResult>> SearchEpisodeByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        int episodeNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for torrents with a custom query.
+    /// </summary>
+    /// <param name="query">The search query.</param>
+    /// <param name="category">The category ("movie" or "tv").</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>List of search results from all indexers.</returns>
+    Task<IReadOnlyList<TorrentSearchResult>> SearchByQueryAsync(
+        string query,
+        string category = "movie",
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for torrents using multiple patterns and aggregates results.
+    /// </summary>
+    /// <param name="patterns">The search patterns to try.</param>
+    /// <param name="category">The category ("movie" or "tv").</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>List of unique search results from all patterns and indexers.</returns>
+    Task<IReadOnlyList<TorrentSearchResult>> SearchByPatternsAsync(
+        IEnumerable<string> patterns,
+        string category = "movie",
+        CancellationToken cancellationToken = default);
 }

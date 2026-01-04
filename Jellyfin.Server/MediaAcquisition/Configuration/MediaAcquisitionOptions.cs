@@ -51,6 +51,22 @@ public class MediaAcquisitionOptions
     /// Gets or sets the list of configured torrent indexers.
     /// </summary>
     public List<TorrentIndexerConfig> Indexers { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the TMDB API key for discovery features.
+    /// </summary>
+    public string TmdbApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the language for TMDB results (e.g., "en-US").
+    /// </summary>
+    public string TmdbLanguage { get; set; } = "en-US";
+
+    /// <summary>
+    /// Gets or sets the minimum free disk space in bytes required before allowing downloads.
+    /// Default is 5GB.
+    /// </summary>
+    public long MinimumFreeSpaceBytes { get; set; } = 5L * 1024 * 1024 * 1024;
 }
 
 /// <summary>

@@ -48,6 +48,8 @@ public static class MediaAcquisitionServiceCollectionExtensions
             services.AddSingleton<IMissingMediaService, DisabledMissingMediaService>();
             services.AddSingleton<IDownloadManagerService, DisabledDownloadManagerService>();
             services.AddSingleton<ITorrentSearchService, DisabledTorrentSearchService>();
+            services.AddSingleton<IDiscoveryService, DisabledDiscoveryService>();
+            services.AddSingleton<ILibraryPathResolver, DisabledLibraryPathResolver>();
             return services;
         }
 
@@ -95,6 +97,8 @@ public static class MediaAcquisitionServiceCollectionExtensions
         services.AddSingleton<IMissingMediaService, MissingMediaService>();
         services.AddSingleton<IDownloadManagerService, DownloadManagerService>();
         services.AddSingleton<ITorrentSearchService, TorrentSearchService>();
+        services.AddSingleton<IDiscoveryService, DiscoveryService>();
+        services.AddSingleton<ILibraryPathResolver, LibraryPathResolver>();
 
         // Register event emitter
         services.AddSingleton<ITorrentProgressEventEmitter, TorrentProgressEventEmitter>();

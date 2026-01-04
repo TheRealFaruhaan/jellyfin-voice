@@ -123,4 +123,118 @@ public class DisabledTorrentSearchService : ITorrentSearchService
     /// <inheritdoc />
     public Task<IDictionary<string, bool>> TestIndexersAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyIndexers);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TorrentSearchResult>> SearchSeasonByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyResults);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TorrentSearchResult>> SearchEpisodeByNameAsync(
+        string seriesName,
+        int seasonNumber,
+        int episodeNumber,
+        IDictionary<string, string>? providerIds = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyResults);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TorrentSearchResult>> SearchByQueryAsync(
+        string query,
+        string category = "movie",
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyResults);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TorrentSearchResult>> SearchByPatternsAsync(
+        IEnumerable<string> patterns,
+        string category = "movie",
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyResults);
+}
+
+/// <summary>
+/// Disabled implementation of <see cref="IDiscoveryService"/> when Media Acquisition is disabled.
+/// </summary>
+public class DisabledDiscoveryService : IDiscoveryService
+{
+    private static readonly DiscoveryPagedResultDto<DiscoveryMovieDto> EmptyMovies = new();
+    private static readonly DiscoveryPagedResultDto<DiscoveryTvShowDto> EmptyTvShows = new();
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyMovies);
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyMovies);
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyMovies);
+
+    /// <inheritdoc />
+    public Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+        => Task.FromResult<DiscoveryMovieDto?>(null);
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyTvShows);
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyTvShows);
+
+    /// <inheritdoc />
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+        => Task.FromResult(EmptyTvShows);
+
+    /// <inheritdoc />
+    public Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+        => Task.FromResult<DiscoveryTvShowDto?>(null);
+
+    /// <inheritdoc />
+    public Task<DiscoverySeasonDto?> GetSeasonDetailsAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken = default)
+        => Task.FromResult<DiscoverySeasonDto?>(null);
+
+    /// <inheritdoc />
+    public Task<DiscoveryEpisodeDto?> GetEpisodeDetailsAsync(int tmdbId, int seasonNumber, int episodeNumber, CancellationToken cancellationToken = default)
+        => Task.FromResult<DiscoveryEpisodeDto?>(null);
+
+    /// <inheritdoc />
+    public string? GetImageUrl(string? path, string size = "w500")
+        => null;
+}
+
+/// <summary>
+/// Disabled implementation of <see cref="ILibraryPathResolver"/> when Media Acquisition is disabled.
+/// </summary>
+public class DisabledLibraryPathResolver : ILibraryPathResolver
+{
+    /// <inheritdoc />
+    public string? GetMovieDownloadPath(string movieTitle, int? year = null)
+        => null;
+
+    /// <inheritdoc />
+    public string? GetTvShowDownloadPath(string showName, int seasonNumber)
+        => null;
+
+    /// <inheritdoc />
+    public string? GetMoviesLibraryPath()
+        => null;
+
+    /// <inheritdoc />
+    public string? GetTvShowsLibraryPath()
+        => null;
+
+    /// <inheritdoc />
+    public DiskSpaceDto GetDiskSpace(string path, long requiredBytes = 0)
+        => new DiskSpaceDto { FreeSpaceBytes = -1, FormattedFreeSpace = "Unknown", HasEnoughSpace = false };
+
+    /// <inheritdoc />
+    public bool HasEnoughDiskSpace(string path, long requiredBytes)
+        => false;
 }
