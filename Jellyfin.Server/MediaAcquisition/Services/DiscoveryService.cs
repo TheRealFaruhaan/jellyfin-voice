@@ -22,13 +22,13 @@ namespace Jellyfin.Server.MediaAcquisition.Services;
 public class DiscoveryService : IDiscoveryService, IDisposable
 {
     private const string TmdbImageBaseUrl = "https://image.tmdb.org/t/p/";
-    private const string DefaultApiKey = "4219e299c89411838049ab0dab19ebd5";
     private const int CacheDurationMinutes = 30;
 
     private readonly IMemoryCache _cache;
     private readonly ILogger<DiscoveryService> _logger;
     private readonly MediaAcquisitionOptions _options;
-    private readonly TMDbClient _tmdbClient;
+    private readonly TMDbClient? _tmdbClient;
+    private readonly bool _isConfigured;
     private bool _disposed;
 
     /// <summary>
@@ -46,14 +46,34 @@ public class DiscoveryService : IDiscoveryService, IDisposable
         _logger = logger;
         _options = options.Value;
 
-        var apiKey = string.IsNullOrEmpty(_options.TmdbApiKey) ? DefaultApiKey : _options.TmdbApiKey;
-        _tmdbClient = new TMDbClient(apiKey);
-        _tmdbClient.ThrowApiExceptions = false;
+        if (string.IsNullOrEmpty(_options.TmdbApiKey))
+        {
+            _logger.LogWarning("TMDB API key is not configured. Discovery features will not work. Please set 'TmdbApiKey' in MediaAcquisition configuration section.");
+            _isConfigured = false;
+            _tmdbClient = null;
+        }
+        else
+        {
+            _tmdbClient = new TMDbClient(_options.TmdbApiKey);
+            _isConfigured = true;
+            _logger.LogInformation("TMDB client initialized successfully");
+        }
+    }
+
+    private DiscoveryPagedResultDto<T> GetNotConfiguredResult<T>()
+    {
+        _logger.LogWarning("Discovery feature requested but TMDB API key is not configured");
+        return new DiscoveryPagedResultDto<T>();
     }
 
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryMovieDto>();
+        }
+
         var cacheKey = $"trending-movies-{page}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryMovieDto>? cached) && cached != null)
@@ -86,6 +106,11 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryMovieDto>();
+        }
+
         var cacheKey = $"popular-movies-{page}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryMovieDto>? cached) && cached != null)
@@ -118,6 +143,11 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryMovieDto>();
+        }
+
         if (string.IsNullOrWhiteSpace(query))
         {
             return new DiscoveryPagedResultDto<DiscoveryMovieDto>();
@@ -155,6 +185,12 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            _logger.LogWarning("GetMovieDetailsAsync requested but TMDB API key is not configured");
+            return null;
+        }
+
         var cacheKey = $"movie-details-{tmdbId}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryMovieDto? cached))
@@ -203,6 +239,11 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryTvShowDto>();
+        }
+
         var cacheKey = $"trending-tvshows-{page}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
@@ -235,6 +276,11 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryTvShowDto>();
+        }
+
         var cacheKey = $"popular-tvshows-{page}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
@@ -267,21 +313,41 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            return GetNotConfiguredResult<DiscoveryTvShowDto>();
+        }
+
         if (string.IsNullOrWhiteSpace(query))
         {
+            _logger.LogWarning("SearchTvShowsAsync called with empty query");
             return new DiscoveryPagedResultDto<DiscoveryTvShowDto>();
         }
+
+        _logger.LogInformation("Searching TV shows for query: {Query}, year: {Year}, page: {Page}", query, year, page);
 
         var cacheKey = $"search-tvshows-{query}-{year}-{page}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
         {
+            _logger.LogDebug("Returning cached TV show search results for query: {Query}", query);
             return cached;
         }
 
         try
         {
-            var result = await _tmdbClient.SearchTvShowAsync(query, _options.TmdbLanguage, page, false, year ?? 0, cancellationToken).ConfigureAwait(false);
+            // Use the overload without year filter if year is not specified (0 can cause issues)
+            SearchContainer<SearchTv> result;
+            if (year.HasValue && year.Value > 0)
+            {
+                result = await _tmdbClient.SearchTvShowAsync(query, _options.TmdbLanguage, page, false, year.Value, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                result = await _tmdbClient.SearchTvShowAsync(query, _options.TmdbLanguage, page, false, 0, cancellationToken).ConfigureAwait(false);
+            }
+
+            _logger.LogInformation("TMDB returned {Count} TV shows for query: {Query}, total results: {Total}", result.Results.Count, query, result.TotalResults);
 
             var dto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
             {
@@ -296,7 +362,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error searching TV shows on TMDB");
+            _logger.LogError(ex, "Error searching TV shows on TMDB for query: {Query}", query);
             return new DiscoveryPagedResultDto<DiscoveryTvShowDto>();
         }
     }
@@ -304,6 +370,12 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            _logger.LogWarning("GetTvShowDetailsAsync requested but TMDB API key is not configured");
+            return null;
+        }
+
         var cacheKey = $"tvshow-details-{tmdbId}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryTvShowDto? cached))
@@ -366,6 +438,12 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoverySeasonDto?> GetSeasonDetailsAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            _logger.LogWarning("GetSeasonDetailsAsync requested but TMDB API key is not configured");
+            return null;
+        }
+
         var cacheKey = $"season-details-{tmdbId}-{seasonNumber}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoverySeasonDto? cached))
@@ -418,6 +496,12 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <inheritdoc />
     public async Task<DiscoveryEpisodeDto?> GetEpisodeDetailsAsync(int tmdbId, int seasonNumber, int episodeNumber, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured || _tmdbClient == null)
+        {
+            _logger.LogWarning("GetEpisodeDetailsAsync requested but TMDB API key is not configured");
+            return null;
+        }
+
         var cacheKey = $"episode-details-{tmdbId}-{seasonNumber}-{episodeNumber}-{_options.TmdbLanguage}";
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryEpisodeDto? cached))
@@ -488,7 +572,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (disposing)
         {
-            _tmdbClient.Dispose();
+            _tmdbClient?.Dispose();
         }
 
         _disposed = true;
