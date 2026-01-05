@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -65,16 +66,17 @@ public class TorznabIndexer : ITorrentIndexer
 
         try
         {
-            // Build search URL
-            var url = BuildSearchUrl("tvsearch", new Dictionary<string, string>
+            // Build search query with common episode naming patterns
+            var searchQuery = $"{seriesName} S{seasonNumber:D2}E{episodeNumber:D2}";
+
+            // Build search URL - use 'search' type for maximum compatibility
+            var url = BuildSearchUrl("search", new Dictionary<string, string>
             {
-                ["q"] = seriesName,
-                ["season"] = seasonNumber.ToString(CultureInfo.InvariantCulture),
-                ["ep"] = episodeNumber.ToString(CultureInfo.InvariantCulture),
+                ["q"] = searchQuery,
                 ["cat"] = $"{CategoryTvHd},{CategoryTvSd},{CategoryTv4K}"
             }, providerIds);
 
-            var response = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+            var response = await SendSearchRequestAsync(url, cancellationToken).ConfigureAwait(false);
             results.AddRange(ParseResults(response));
 
             _logger.LogDebug(
@@ -102,13 +104,14 @@ public class TorznabIndexer : ITorrentIndexer
         {
             var searchQuery = year.HasValue ? $"{movieName} {year}" : movieName;
 
-            var url = BuildSearchUrl("movie", new Dictionary<string, string>
+            // Use 'search' type for maximum compatibility with all indexers
+            var url = BuildSearchUrl("search", new Dictionary<string, string>
             {
                 ["q"] = searchQuery,
                 ["cat"] = $"{CategoryMoviesHd},{CategoryMoviesSd},{CategoryMovies4K}"
             }, providerIds);
 
-            var response = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+            var response = await SendSearchRequestAsync(url, cancellationToken).ConfigureAwait(false);
             results.AddRange(ParseResults(response));
 
             _logger.LogDebug(
@@ -128,9 +131,25 @@ public class TorznabIndexer : ITorrentIndexer
     {
         try
         {
-            var url = $"{_config.BaseUrl.TrimEnd('/')}/api?apikey={_config.ApiKey}&t=caps";
-            var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            var baseUrl = _config.BaseUrl.TrimEnd('/');
+
+            if (IsProwlarr)
+            {
+                // Use Prowlarr native API status endpoint with header auth
+                var url = $"{baseUrl}/api/v1/indexer";
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("X-Api-Key", _config.ApiKey);
+
+                var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            else
+            {
+                // Use standard Torznab caps endpoint
+                var url = $"{baseUrl}/api?apikey={_config.ApiKey}&t=caps";
+                var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
         }
         catch (Exception ex)
         {
@@ -149,18 +168,18 @@ public class TorznabIndexer : ITorrentIndexer
 
         try
         {
-            var searchType = category.Equals("tv", StringComparison.OrdinalIgnoreCase) ? "tvsearch" : "movie";
+            // Use 'search' type for maximum compatibility with all indexers
             var categories = category.Equals("tv", StringComparison.OrdinalIgnoreCase)
                 ? $"{CategoryTvHd},{CategoryTvSd},{CategoryTv4K}"
                 : $"{CategoryMoviesHd},{CategoryMoviesSd},{CategoryMovies4K}";
 
-            var url = BuildSearchUrl(searchType, new Dictionary<string, string>
+            var url = BuildSearchUrl("search", new Dictionary<string, string>
             {
                 ["q"] = query,
                 ["cat"] = categories
             }, null);
 
-            var response = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+            var response = await SendSearchRequestAsync(url, cancellationToken).ConfigureAwait(false);
             results.AddRange(ParseResults(response));
 
             _logger.LogDebug(
@@ -175,38 +194,117 @@ public class TorznabIndexer : ITorrentIndexer
         return results;
     }
 
+    private bool IsProwlarr => _config.Name.Contains("Prowlarr", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<string> SendSearchRequestAsync(string url, CancellationToken cancellationToken)
+    {
+        if (IsProwlarr)
+        {
+            // Prowlarr requires API key as header
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("X-Api-Key", _config.ApiKey);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            // Standard Torznab uses API key in URL
+            return await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private string BuildSearchUrl(string searchType, Dictionary<string, string> parameters, IDictionary<string, string>? providerIds)
     {
-        var url = $"{_config.BaseUrl.TrimEnd('/')}/api?apikey={_config.ApiKey}&t={searchType}";
+        var baseUrl = _config.BaseUrl.TrimEnd('/');
 
-        foreach (var param in parameters)
+        string url;
+        if (IsProwlarr)
         {
-            url += $"&{param.Key}={Uri.EscapeDataString(param.Value)}";
+            // Use Prowlarr native API format (API key sent via header)
+            var query = parameters.TryGetValue("q", out var q) ? q : string.Empty;
+            url = $"{baseUrl}/api/v1/search?query={Uri.EscapeDataString(query)}";
+        }
+        else
+        {
+            // Use standard Torznab API format
+            url = $"{baseUrl}/api?apikey={_config.ApiKey}&t={searchType}";
+
+            foreach (var param in parameters)
+            {
+                url += $"&{param.Key}={Uri.EscapeDataString(param.Value)}";
+            }
+
+            // Add provider IDs if available
+            if (providerIds != null)
+            {
+                if (providerIds.TryGetValue("Tvdb", out var tvdbId))
+                {
+                    url += $"&tvdbid={tvdbId}";
+                }
+
+                if (providerIds.TryGetValue("Tmdb", out var tmdbId))
+                {
+                    url += $"&tmdbid={tmdbId}";
+                }
+
+                if (providerIds.TryGetValue("Imdb", out var imdbId))
+                {
+                    url += $"&imdbid={imdbId}";
+                }
+            }
         }
 
-        // Add provider IDs if available
-        if (providerIds != null)
-        {
-            if (providerIds.TryGetValue("Tvdb", out var tvdbId))
-            {
-                url += $"&tvdbid={tvdbId}";
-            }
-
-            if (providerIds.TryGetValue("Tmdb", out var tmdbId))
-            {
-                url += $"&tmdbid={tmdbId}";
-            }
-
-            if (providerIds.TryGetValue("Imdb", out var imdbId))
-            {
-                url += $"&imdbid={imdbId}";
-            }
-        }
+        // Log URL for debugging
+        _logger.LogInformation("Built search URL for {Indexer}: {Url}", Name, url);
 
         return url;
     }
 
-    private IEnumerable<TorrentSearchResult> ParseResults(string xmlResponse)
+    private IEnumerable<TorrentSearchResult> ParseResults(string response)
+    {
+        var results = new List<TorrentSearchResult>();
+
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            _logger.LogWarning("Empty response received from indexer {Indexer}", Name);
+            return results;
+        }
+
+        // Log first 500 chars for debugging (at Info level for troubleshooting)
+        var preview = response.Length > 500 ? response[..500] : response;
+        _logger.LogInformation("Response from {Indexer} (length: {Length}): {Preview}", Name, response.Length, preview);
+
+        // Detect response type and parse accordingly
+        var trimmedResponse = response.TrimStart();
+
+        // Check for HTML error pages
+        if (trimmedResponse.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+            trimmedResponse.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Received HTML error page from {Indexer} - check indexer URL and API key configuration", Name);
+            return results;
+        }
+
+        if (trimmedResponse.StartsWith('<'))
+        {
+            // XML response (Torznab)
+            return ParseXmlResults(response);
+        }
+        else if (trimmedResponse.StartsWith('{') || trimmedResponse.StartsWith('['))
+        {
+            // JSON response (Prowlarr API format)
+            return ParseJsonResults(response);
+        }
+        else
+        {
+            _logger.LogWarning("Unknown response format from {Indexer}. First 200 chars: {Preview}", Name, response.Length > 200 ? response[..200] : response);
+            return results;
+        }
+    }
+
+    private IEnumerable<TorrentSearchResult> ParseXmlResults(string xmlResponse)
     {
         var results = new List<TorrentSearchResult>();
 
@@ -329,10 +427,197 @@ public class TorznabIndexer : ITorrentIndexer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to parse Torznab XML response");
+            _logger.LogWarning(ex, "Failed to parse Torznab XML response from {Indexer}", Name);
         }
 
         return results;
+    }
+
+    private IEnumerable<TorrentSearchResult> ParseJsonResults(string jsonResponse)
+    {
+        var results = new List<TorrentSearchResult>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonResponse);
+
+            // Handle array response (direct results)
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    var result = ParseJsonItem(item);
+                    if (result != null)
+                    {
+                        results.Add(result);
+                    }
+                }
+            }
+            // Handle object response (wrapped results)
+            else if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                // Check for error response
+                if (doc.RootElement.TryGetProperty("error", out var errorProp))
+                {
+                    _logger.LogWarning("Indexer {Indexer} returned error: {Error}", Name, errorProp.GetString());
+                    return results;
+                }
+
+                // Try common result wrapper properties
+                JsonElement? resultsArray = null;
+                if (doc.RootElement.TryGetProperty("results", out var resultsProp))
+                {
+                    resultsArray = resultsProp;
+                }
+                else if (doc.RootElement.TryGetProperty("items", out var itemsProp))
+                {
+                    resultsArray = itemsProp;
+                }
+                else if (doc.RootElement.TryGetProperty("data", out var dataProp))
+                {
+                    resultsArray = dataProp;
+                }
+
+                if (resultsArray?.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in resultsArray.Value.EnumerateArray())
+                    {
+                        var result = ParseJsonItem(item);
+                        if (result != null)
+                        {
+                            results.Add(result);
+                        }
+                    }
+                }
+            }
+
+            _logger.LogDebug("Parsed {Count} results from JSON response from {Indexer}", results.Count, Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse JSON response from {Indexer}", Name);
+        }
+
+        return results;
+    }
+
+    private TorrentSearchResult? ParseJsonItem(JsonElement item)
+    {
+        try
+        {
+            var result = new TorrentSearchResult
+            {
+                IndexerName = Name
+            };
+
+            // Title (multiple possible property names)
+            result.Title = GetJsonString(item, "title", "name", "Title", "Name") ?? string.Empty;
+
+            // Magnet link
+            result.MagnetLink = GetJsonString(item, "magnetUrl", "magnetLink", "magnet", "MagnetUrl", "MagnetLink") ?? string.Empty;
+
+            // Download URL
+            result.DownloadUrl = GetJsonString(item, "downloadUrl", "link", "guid", "DownloadUrl", "Link");
+
+            // Info hash
+            result.InfoHash = GetJsonString(item, "infoHash", "hash", "InfoHash", "Hash");
+            if (!string.IsNullOrEmpty(result.InfoHash) && string.IsNullOrEmpty(result.MagnetLink))
+            {
+                result.MagnetLink = $"magnet:?xt=urn:btih:{result.InfoHash}";
+            }
+
+            // Size
+            result.Size = GetJsonLong(item, "size", "Size") ?? 0;
+
+            // Seeders
+            result.Seeders = GetJsonInt(item, "seeders", "Seeders", "seed") ?? 0;
+
+            // Leechers
+            result.Leechers = GetJsonInt(item, "leechers", "Leechers", "leech", "peers", "Peers") ?? 0;
+
+            // Details URL
+            result.DetailsUrl = GetJsonString(item, "infoUrl", "detailsUrl", "details", "guid", "InfoUrl", "DetailsUrl");
+
+            // Publish date
+            var dateStr = GetJsonString(item, "publishDate", "pubDate", "date", "PublishDate", "PubDate");
+            if (!string.IsNullOrEmpty(dateStr) && DateTime.TryParse(dateStr, out var date))
+            {
+                result.PublishDate = date;
+            }
+
+            // Parse quality from title
+            result.Quality = ParseQuality(result.Title);
+            result.Source = ParseSource(result.Title);
+            result.Codec = ParseCodec(result.Title);
+
+            // Only return if we have a valid download method
+            if (!string.IsNullOrEmpty(result.MagnetLink) || !string.IsNullOrEmpty(result.DownloadUrl))
+            {
+                return result;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to parse JSON torrent item");
+            return null;
+        }
+    }
+
+    private static string? GetJsonString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+            {
+                return prop.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static int? GetJsonInt(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var intVal))
+                {
+                    return intVal;
+                }
+
+                if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out var parsedVal))
+                {
+                    return parsedVal;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static long? GetJsonLong(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt64(out var longVal))
+                {
+                    return longVal;
+                }
+
+                if (prop.ValueKind == JsonValueKind.String && long.TryParse(prop.GetString(), out var parsedVal))
+                {
+                    return parsedVal;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static string? ParseQuality(string title)
