@@ -59,6 +59,27 @@ public class DisabledDownloadManagerService : IDownloadManagerService
         => throw new InvalidOperationException(DisabledMessage);
 
     /// <inheritdoc />
+    public Task<TorrentDownload> StartDiscoveryMovieDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string movieTitle,
+        int? year,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException(DisabledMessage);
+
+    /// <inheritdoc />
+    public Task<TorrentDownload> StartDiscoveryEpisodeDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string showName,
+        int seasonNumber,
+        int episodeNumber,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException(DisabledMessage);
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<TorrentDownload>> GetAllDownloadsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyDownloads);
 

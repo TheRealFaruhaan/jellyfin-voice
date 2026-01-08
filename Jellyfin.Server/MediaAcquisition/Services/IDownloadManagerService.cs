@@ -45,6 +45,46 @@ public interface IDownloadManagerService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Starts a download for a discovery movie (not yet in library).
+    /// Downloads to the movies library folder.
+    /// </summary>
+    /// <param name="torrent">The torrent search result.</param>
+    /// <param name="tmdbId">The TMDB ID.</param>
+    /// <param name="movieTitle">The movie title for folder naming.</param>
+    /// <param name="year">The release year for folder naming.</param>
+    /// <param name="userId">The user who initiated the download.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The created download.</returns>
+    Task<TorrentDownload> StartDiscoveryMovieDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string movieTitle,
+        int? year,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts a download for a discovery TV show episode (not yet in library).
+    /// Downloads to the TV shows library folder in the correct series/season structure.
+    /// </summary>
+    /// <param name="torrent">The torrent search result.</param>
+    /// <param name="tmdbId">The TMDB ID of the TV show.</param>
+    /// <param name="showName">The TV show name for folder naming.</param>
+    /// <param name="seasonNumber">The season number.</param>
+    /// <param name="episodeNumber">The episode number.</param>
+    /// <param name="userId">The user who initiated the download.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The created download.</returns>
+    Task<TorrentDownload> StartDiscoveryEpisodeDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string showName,
+        int seasonNumber,
+        int episodeNumber,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets all downloads.
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>

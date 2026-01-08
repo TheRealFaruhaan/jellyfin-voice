@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Api;
+using Jellyfin.Api.Extensions;
 using Jellyfin.Server.MediaAcquisition.Indexers;
 using Jellyfin.Server.MediaAcquisition.Models;
 using Jellyfin.Server.MediaAcquisition.Services;
@@ -25,6 +27,7 @@ public class DiscoveryController : BaseJellyfinApiController
     private readonly IDiscoveryService _discoveryService;
     private readonly ITorrentSearchService _searchService;
     private readonly ILibraryPathResolver _pathResolver;
+    private readonly IDownloadManagerService _downloadManager;
     private readonly ILogger<DiscoveryController> _logger;
 
     /// <summary>
@@ -33,16 +36,19 @@ public class DiscoveryController : BaseJellyfinApiController
     /// <param name="discoveryService">The discovery service.</param>
     /// <param name="searchService">The torrent search service.</param>
     /// <param name="pathResolver">The library path resolver.</param>
+    /// <param name="downloadManager">The download manager service.</param>
     /// <param name="logger">The logger.</param>
     public DiscoveryController(
         IDiscoveryService discoveryService,
         ITorrentSearchService searchService,
         ILibraryPathResolver pathResolver,
+        IDownloadManagerService downloadManager,
         ILogger<DiscoveryController> logger)
     {
         _discoveryService = discoveryService;
         _searchService = searchService;
         _pathResolver = pathResolver;
+        _downloadManager = downloadManager;
         _logger = logger;
     }
 
@@ -380,5 +386,163 @@ public class DiscoveryController : BaseJellyfinApiController
 
         var diskSpace = _pathResolver.GetDiskSpace(path, requiredBytes);
         return Ok(diskSpace);
+    }
+
+    // ===== DOWNLOADS =====
+
+    /// <summary>
+    /// Starts a movie download from discovery.
+    /// </summary>
+    /// <param name="request">The download request.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">Download started.</response>
+    /// <response code="400">Invalid request.</response>
+    /// <returns>The created download.</returns>
+    [HttpPost("Movies/Download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<DownloadDto>> StartMovieDownload(
+        [FromBody, Required] DiscoveryDownloadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var userId = User.GetUserId();
+
+            // Get raw values - they may be swapped (Prowlarr sends magnet in downloadUrl)
+            var rawMagnet = request.MagnetLink ?? string.Empty;
+            var rawDownload = request.DownloadUrl ?? string.Empty;
+
+            // Detect and fix swapped fields by checking content
+            string magnetLink;
+            string? downloadUrl;
+            if (rawDownload.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                magnetLink = rawDownload;
+                downloadUrl = string.IsNullOrEmpty(rawMagnet) ? null : rawMagnet;
+            }
+            else if (rawMagnet.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                magnetLink = rawMagnet;
+                downloadUrl = string.IsNullOrEmpty(rawDownload) ? null : rawDownload;
+            }
+            else
+            {
+                // Neither is a magnet link - use downloadUrl if available
+                magnetLink = !string.IsNullOrEmpty(rawDownload) ? rawDownload : rawMagnet;
+                downloadUrl = null;
+            }
+
+            var torrent = new TorrentSearchResult
+            {
+                Title = request.Title,
+                MagnetLink = magnetLink,
+                DownloadUrl = downloadUrl,
+                Size = request.Size,
+                Seeders = request.Seeders,
+                Leechers = request.Leechers,
+                Quality = request.Quality,
+                IndexerName = request.IndexerName ?? "Discovery"
+            };
+
+            _logger.LogInformation(
+                "Starting movie download: Title={Title}, MagnetLink={Magnet}, DownloadUrl={Download}",
+                request.Title, magnetLink.Length > 50 ? magnetLink[..50] + "..." : magnetLink, downloadUrl);
+
+            // Use the discovery download method which handles library path resolution
+            var download = await _downloadManager.StartDiscoveryMovieDownloadAsync(
+                torrent,
+                request.TmdbId,
+                request.MovieTitle,
+                request.Year,
+                userId,
+                cancellationToken).ConfigureAwait(false);
+
+            return Ok(DownloadDto.FromEntity(download));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start movie download for {Title}", request.Title);
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Starts a TV show episode download from discovery.
+    /// </summary>
+    /// <param name="request">The download request.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">Download started.</response>
+    /// <response code="400">Invalid request.</response>
+    /// <returns>The created download.</returns>
+    [HttpPost("TvShows/Download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<DownloadDto>> StartTvShowDownload(
+        [FromBody, Required] DiscoveryTvDownloadRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var userId = User.GetUserId();
+
+            // Get raw values - they may be swapped (Prowlarr sends magnet in downloadUrl)
+            var rawMagnet = request.MagnetLink ?? string.Empty;
+            var rawDownload = request.DownloadUrl ?? string.Empty;
+
+            // Detect and fix swapped fields by checking content
+            string magnetLink;
+            string? downloadUrl;
+            if (rawDownload.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                magnetLink = rawDownload;
+                downloadUrl = string.IsNullOrEmpty(rawMagnet) ? null : rawMagnet;
+            }
+            else if (rawMagnet.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                magnetLink = rawMagnet;
+                downloadUrl = string.IsNullOrEmpty(rawDownload) ? null : rawDownload;
+            }
+            else
+            {
+                // Neither is a magnet link - use downloadUrl if available
+                magnetLink = !string.IsNullOrEmpty(rawDownload) ? rawDownload : rawMagnet;
+                downloadUrl = null;
+            }
+
+            var torrent = new TorrentSearchResult
+            {
+                Title = request.Title,
+                MagnetLink = magnetLink,
+                DownloadUrl = downloadUrl,
+                Size = request.Size,
+                Seeders = request.Seeders,
+                Leechers = request.Leechers,
+                Quality = request.Quality,
+                IndexerName = request.IndexerName ?? "Discovery"
+            };
+
+            _logger.LogInformation(
+                "Starting TV download: Title={Title}, ShowName={Show}, S{Season}E{Episode}, MagnetLink={Magnet}",
+                request.Title, request.ShowName, request.SeasonNumber, request.EpisodeNumber,
+                magnetLink.Length > 50 ? magnetLink[..50] + "..." : magnetLink);
+
+            // Use the discovery download method which handles library path resolution
+            var download = await _downloadManager.StartDiscoveryEpisodeDownloadAsync(
+                torrent,
+                request.TmdbId,
+                request.ShowName,
+                request.SeasonNumber,
+                request.EpisodeNumber,
+                userId,
+                cancellationToken).ConfigureAwait(false);
+
+            return Ok(DownloadDto.FromEntity(download));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start TV show download for {Title}", request.Title);
+            return BadRequest(ex.Message);
+        }
     }
 }

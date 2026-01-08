@@ -565,3 +565,153 @@ public class CustomTorrentSearchRequest
     /// </summary>
     public string Category { get; set; } = "movie";
 }
+
+/// <summary>
+/// Request to download a movie from discovery.
+/// </summary>
+public class DiscoveryDownloadRequest
+{
+    /// <summary>
+    /// Gets or sets the TMDB ID.
+    /// </summary>
+    [JsonPropertyName("tmdbId")]
+    public int TmdbId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the movie title (for folder naming).
+    /// </summary>
+    [JsonPropertyName("movieTitle")]
+    public string MovieTitle { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the release year (for folder naming).
+    /// </summary>
+    [JsonPropertyName("year")]
+    public int? Year { get; set; }
+
+    /// <summary>
+    /// Gets or sets the torrent title.
+    /// </summary>
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the magnet link.
+    /// </summary>
+    [JsonPropertyName("magnetLink")]
+    public string? MagnetLink { get; set; }
+
+    /// <summary>
+    /// Gets or sets the download URL.
+    /// </summary>
+    [JsonPropertyName("downloadUrl")]
+    public string? DownloadUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size in bytes.
+    /// </summary>
+    [JsonPropertyName("size")]
+    public long Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of seeders.
+    /// </summary>
+    [JsonPropertyName("seeders")]
+    public int Seeders { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of leechers.
+    /// </summary>
+    [JsonPropertyName("leechers")]
+    public int Leechers { get; set; }
+
+    /// <summary>
+    /// Gets or sets the quality.
+    /// </summary>
+    [JsonPropertyName("quality")]
+    public string? Quality { get; set; }
+
+    /// <summary>
+    /// Gets or sets the indexer name.
+    /// </summary>
+    [JsonPropertyName("indexerName")]
+    public string? IndexerName { get; set; }
+}
+
+/// <summary>
+/// Request to download a TV show episode from discovery.
+/// </summary>
+public class DiscoveryTvDownloadRequest
+{
+    /// <summary>
+    /// Gets or sets the TMDB ID.
+    /// </summary>
+    [JsonPropertyName("tmdbId")]
+    public int TmdbId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the TV show name (for folder naming).
+    /// </summary>
+    [JsonPropertyName("showName")]
+    public string ShowName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the season number.
+    /// </summary>
+    [JsonPropertyName("seasonNumber")]
+    public int SeasonNumber { get; set; }
+
+    /// <summary>
+    /// Gets or sets the episode number.
+    /// </summary>
+    [JsonPropertyName("episodeNumber")]
+    public int EpisodeNumber { get; set; }
+
+    /// <summary>
+    /// Gets or sets the torrent title.
+    /// </summary>
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the magnet link.
+    /// </summary>
+    [JsonPropertyName("magnetLink")]
+    public string? MagnetLink { get; set; }
+
+    /// <summary>
+    /// Gets or sets the download URL.
+    /// </summary>
+    [JsonPropertyName("downloadUrl")]
+    public string? DownloadUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size in bytes.
+    /// </summary>
+    [JsonPropertyName("size")]
+    public long Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of seeders.
+    /// </summary>
+    [JsonPropertyName("seeders")]
+    public int Seeders { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of leechers.
+    /// </summary>
+    [JsonPropertyName("leechers")]
+    public int Leechers { get; set; }
+
+    /// <summary>
+    /// Gets or sets the quality.
+    /// </summary>
+    [JsonPropertyName("quality")]
+    public string? Quality { get; set; }
+
+    /// <summary>
+    /// Gets or sets the indexer name.
+    /// </summary>
+    [JsonPropertyName("indexerName")]
+    public string? IndexerName { get; set; }
+}

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Server.MediaAcquisition.Configuration;
@@ -23,6 +24,7 @@ public class DownloadManagerService : IDownloadManagerService
     private readonly IQBittorrentClient _qbClient;
     private readonly ITorrentDownloadRepository _repository;
     private readonly ILibraryManager _libraryManager;
+    private readonly ILibraryPathResolver _pathResolver;
     private readonly ILogger<DownloadManagerService> _logger;
     private readonly MediaAcquisitionOptions _options;
 
@@ -32,18 +34,21 @@ public class DownloadManagerService : IDownloadManagerService
     /// <param name="qbClient">The qBittorrent client.</param>
     /// <param name="repository">The download repository.</param>
     /// <param name="libraryManager">The library manager.</param>
+    /// <param name="pathResolver">The library path resolver.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="options">The configuration options.</param>
     public DownloadManagerService(
         IQBittorrentClient qbClient,
         ITorrentDownloadRepository repository,
         ILibraryManager libraryManager,
+        ILibraryPathResolver pathResolver,
         ILogger<DownloadManagerService> logger,
         IOptions<MediaAcquisitionOptions> options)
     {
         _qbClient = qbClient;
         _repository = repository;
         _libraryManager = libraryManager;
+        _pathResolver = pathResolver;
         _logger = logger;
         _options = options.Value;
     }
@@ -180,6 +185,169 @@ public class DownloadManagerService : IDownloadManagerService
         _logger.LogInformation("Started movie download: {Movie} - {Torrent}", movie.Name, torrent.Title);
 
         return download;
+    }
+
+    /// <inheritdoc />
+    public async Task<TorrentDownload> StartDiscoveryMovieDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string movieTitle,
+        int? year,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        // Get the download path using the library path resolver
+        var downloadPath = _pathResolver.GetMovieDownloadPath(movieTitle, year);
+        if (string.IsNullOrEmpty(downloadPath))
+        {
+            throw new InvalidOperationException("No movies library configured. Please configure a movies library in Jellyfin settings.");
+        }
+
+        // Note: Don't create the directory here - qBittorrent will create it with proper permissions
+
+        // Check disk space (use parent directory for check since target folder may not exist yet)
+        if (!_pathResolver.HasEnoughDiskSpace(downloadPath, torrent.Size))
+        {
+            throw new InvalidOperationException("Insufficient disk space for download");
+        }
+
+        // Ensure category exists in qBittorrent
+        await _qbClient.CreateCategoryAsync(_options.TorrentCategory, downloadPath, cancellationToken).ConfigureAwait(false);
+
+        // Add torrent to qBittorrent with the library path
+        var added = await _qbClient.AddTorrentAsync(
+            torrent.MagnetLink,
+            downloadPath,
+            _options.TorrentCategory,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!added)
+        {
+            throw new InvalidOperationException("Failed to add torrent to qBittorrent");
+        }
+
+        // Extract hash from magnet link
+        var hash = ExtractHashFromMagnet(torrent.MagnetLink);
+
+        // Create a deterministic GUID from TMDB ID
+        var movieGuid = CreateGuidFromTmdbId("movie", tmdbId);
+
+        // Create download record
+        var download = new TorrentDownload
+        {
+            TorrentHash = hash,
+            Name = torrent.Title,
+            MagnetLink = torrent.MagnetLink,
+            MediaType = MediaType.Movie,
+            MovieId = movieGuid,
+            MovieName = movieTitle,
+            State = TorrentState.Queued,
+            TotalSize = torrent.Size,
+            Seeders = torrent.Seeders,
+            Leechers = torrent.Leechers,
+            Quality = torrent.Quality,
+            IndexerName = torrent.IndexerName,
+            AutoImport = _options.AutoImportEnabled,
+            InitiatedByUserId = userId,
+            SavePath = downloadPath
+        };
+
+        await _repository.AddAsync(download, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Started discovery movie download: {Movie} ({Year}) - {Torrent} -> {Path}",
+            movieTitle, year, torrent.Title, downloadPath);
+
+        return download;
+    }
+
+    /// <inheritdoc />
+    public async Task<TorrentDownload> StartDiscoveryEpisodeDownloadAsync(
+        TorrentSearchResult torrent,
+        int tmdbId,
+        string showName,
+        int seasonNumber,
+        int episodeNumber,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        // Get the download path using the library path resolver
+        // This returns: {TV Library}/{Show Name}/Season {XX}/
+        var downloadPath = _pathResolver.GetTvShowDownloadPath(showName, seasonNumber);
+        if (string.IsNullOrEmpty(downloadPath))
+        {
+            throw new InvalidOperationException("No TV shows library configured. Please configure a TV shows library in Jellyfin settings.");
+        }
+
+        // Note: Don't create the directory here - qBittorrent will create it with proper permissions
+
+        // Check disk space (use parent directory for check since target folder may not exist yet)
+        if (!_pathResolver.HasEnoughDiskSpace(downloadPath, torrent.Size))
+        {
+            throw new InvalidOperationException("Insufficient disk space for download");
+        }
+
+        // Ensure category exists in qBittorrent
+        await _qbClient.CreateCategoryAsync(_options.TorrentCategory, downloadPath, cancellationToken).ConfigureAwait(false);
+
+        // Add torrent to qBittorrent with the library path
+        var added = await _qbClient.AddTorrentAsync(
+            torrent.MagnetLink,
+            downloadPath,
+            _options.TorrentCategory,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!added)
+        {
+            throw new InvalidOperationException("Failed to add torrent to qBittorrent");
+        }
+
+        // Extract hash from magnet link
+        var hash = ExtractHashFromMagnet(torrent.MagnetLink);
+
+        // Create a deterministic GUID from TMDB ID
+        var seriesGuid = CreateGuidFromTmdbId("tv", tmdbId);
+
+        // Create download record
+        var download = new TorrentDownload
+        {
+            TorrentHash = hash,
+            Name = torrent.Title,
+            MagnetLink = torrent.MagnetLink,
+            MediaType = MediaType.Episode,
+            SeriesId = seriesGuid,
+            SeriesName = showName,
+            SeasonNumber = seasonNumber,
+            EpisodeNumber = episodeNumber,
+            State = TorrentState.Queued,
+            TotalSize = torrent.Size,
+            Seeders = torrent.Seeders,
+            Leechers = torrent.Leechers,
+            Quality = torrent.Quality,
+            IndexerName = torrent.IndexerName,
+            AutoImport = _options.AutoImportEnabled,
+            InitiatedByUserId = userId,
+            SavePath = downloadPath
+        };
+
+        await _repository.AddAsync(download, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Started discovery episode download: {Show} S{Season:D2}E{Episode:D2} - {Torrent} -> {Path}",
+            showName, seasonNumber, episodeNumber, torrent.Title, downloadPath);
+
+        return download;
+    }
+
+    /// <summary>
+    /// Creates a deterministic GUID from a TMDB ID.
+    /// </summary>
+    private static Guid CreateGuidFromTmdbId(string type, int tmdbId)
+    {
+        var input = $"tmdb:{type}:{tmdbId}";
+        using var md5 = System.Security.Cryptography.MD5.Create();
+        var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+        return new Guid(hash);
     }
 
     /// <inheritdoc />

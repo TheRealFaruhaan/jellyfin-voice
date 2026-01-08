@@ -49,19 +49,8 @@ public class LibraryPathResolver : ILibraryPathResolver
         var folderName = SearchPatternGenerator.CreateSafeFolderName(movieTitle, year);
         var fullPath = Path.Combine(libraryPath, folderName);
 
-        try
-        {
-            if (!Directory.Exists(fullPath))
-            {
-                Directory.CreateDirectory(fullPath);
-                _logger.LogInformation("Created movie download folder: {Path}", fullPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create movie download folder: {Path}", fullPath);
-            return null;
-        }
+        // Don't create the folder here - let qBittorrent create it with its own permissions
+        _logger.LogDebug("Resolved movie download path: {Path}", fullPath);
 
         return fullPath;
     }
@@ -80,19 +69,8 @@ public class LibraryPathResolver : ILibraryPathResolver
         var seasonFolderName = SearchPatternGenerator.CreateSeasonFolderName(seasonNumber);
         var fullPath = Path.Combine(libraryPath, showFolderName, seasonFolderName);
 
-        try
-        {
-            if (!Directory.Exists(fullPath))
-            {
-                Directory.CreateDirectory(fullPath);
-                _logger.LogInformation("Created TV show download folder: {Path}", fullPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create TV show download folder: {Path}", fullPath);
-            return null;
-        }
+        // Don't create the folder here - let qBittorrent create it with its own permissions
+        _logger.LogDebug("Resolved TV show download path: {Path}", fullPath);
 
         return fullPath;
     }

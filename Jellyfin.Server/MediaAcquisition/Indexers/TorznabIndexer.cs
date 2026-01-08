@@ -513,11 +513,28 @@ public class TorznabIndexer : ITorrentIndexer
             // Title (multiple possible property names)
             result.Title = GetJsonString(item, "title", "name", "Title", "Name") ?? string.Empty;
 
-            // Magnet link
-            result.MagnetLink = GetJsonString(item, "magnetUrl", "magnetLink", "magnet", "MagnetUrl", "MagnetLink") ?? string.Empty;
+            // Get raw values from JSON - Prowlarr may have them swapped
+            var rawMagnetUrl = GetJsonString(item, "magnetUrl", "magnetLink", "magnet", "MagnetUrl", "MagnetLink");
+            var rawDownloadUrl = GetJsonString(item, "downloadUrl", "link", "guid", "DownloadUrl", "Link");
 
-            // Download URL
-            result.DownloadUrl = GetJsonString(item, "downloadUrl", "link", "guid", "DownloadUrl", "Link");
+            // Prowlarr returns downloadUrl with actual magnet link, and magnetUrl with HTTP download link
+            // Detect and fix this by checking content
+            if (!string.IsNullOrEmpty(rawDownloadUrl) && rawDownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                result.MagnetLink = rawDownloadUrl;
+                result.DownloadUrl = rawMagnetUrl; // This is the HTTP .torrent download URL
+            }
+            else if (!string.IsNullOrEmpty(rawMagnetUrl) && rawMagnetUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                result.MagnetLink = rawMagnetUrl;
+                result.DownloadUrl = rawDownloadUrl;
+            }
+            else
+            {
+                // Neither is a magnet link, use as-is
+                result.MagnetLink = rawMagnetUrl ?? string.Empty;
+                result.DownloadUrl = rawDownloadUrl;
+            }
 
             // Info hash
             result.InfoHash = GetJsonString(item, "infoHash", "hash", "InfoHash", "Hash");
