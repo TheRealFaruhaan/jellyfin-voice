@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Server.MediaAcquisition.Configuration;
@@ -226,8 +227,8 @@ public class DownloadManagerService : IDownloadManagerService
             throw new InvalidOperationException("Failed to add torrent to qBittorrent");
         }
 
-        // Extract hash from magnet link
-        var hash = ExtractHashFromMagnet(torrent.MagnetLink);
+        // Extract hash from magnet link or get from qBittorrent
+        var hash = await GetTorrentHashAsync(torrent.MagnetLink, torrent.Title, cancellationToken).ConfigureAwait(false);
 
         // Create a deterministic GUID from TMDB ID
         var movieGuid = CreateGuidFromTmdbId("movie", tmdbId);
@@ -302,8 +303,8 @@ public class DownloadManagerService : IDownloadManagerService
             throw new InvalidOperationException("Failed to add torrent to qBittorrent");
         }
 
-        // Extract hash from magnet link
-        var hash = ExtractHashFromMagnet(torrent.MagnetLink);
+        // Extract hash from magnet link or get from qBittorrent
+        var hash = await GetTorrentHashAsync(torrent.MagnetLink, torrent.Title, cancellationToken).ConfigureAwait(false);
 
         // Create a deterministic GUID from TMDB ID
         var seriesGuid = CreateGuidFromTmdbId("tv", tmdbId);
@@ -461,5 +462,45 @@ public class DownloadManagerService : IDownloadManagerService
         }
 
         return magnetLink.Substring(startIndex, endIndex - startIndex).ToLowerInvariant();
+    }
+
+    private async Task<string> GetTorrentHashAsync(string magnetLinkOrUrl, string torrentTitle, CancellationToken cancellationToken)
+    {
+        // If it's a magnet link, extract hash directly
+        if (magnetLinkOrUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExtractHashFromMagnet(magnetLinkOrUrl);
+        }
+
+        // For download URLs, wait for qBittorrent to process, then find the most recently added torrent
+        // Get initial torrent list
+        var torrentsBefore = await _qbClient.GetTorrentsAsync(_options.TorrentCategory, cancellationToken).ConfigureAwait(false);
+        var hashesBefore = new HashSet<string>(torrentsBefore.Select(t => t.Hash));
+
+        // Wait for qBittorrent to add the torrent
+        await Task.Delay(3000, cancellationToken).ConfigureAwait(false);
+
+        // Get updated torrent list
+        var torrentsAfter = await _qbClient.GetTorrentsAsync(_options.TorrentCategory, cancellationToken).ConfigureAwait(false);
+
+        // Find the newly added torrent(s)
+        var newTorrent = torrentsAfter.FirstOrDefault(t => !hashesBefore.Contains(t.Hash));
+
+        if (newTorrent == null)
+        {
+            // Log all torrent names to help debug
+            _logger.LogWarning(
+                "Failed to find newly added torrent. Expected: '{Title}'. Found torrents: {Torrents}",
+                torrentTitle,
+                string.Join(", ", torrentsAfter.Select(t => $"'{t.Name}'")));
+
+            throw new InvalidOperationException($"Failed to find added torrent '{torrentTitle}' in qBittorrent. Check logs for available torrents.");
+        }
+
+        _logger.LogInformation(
+            "Found newly added torrent: '{TorrentName}' with hash {Hash}",
+            newTorrent.Name, newTorrent.Hash);
+
+        return newTorrent.Hash.ToLowerInvariant();
     }
 }
