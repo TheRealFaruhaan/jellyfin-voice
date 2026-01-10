@@ -280,6 +280,10 @@ public class DownloadManagerService : IDownloadManagerService
             throw new InvalidOperationException("No TV shows library configured. Please configure a TV shows library in Jellyfin settings.");
         }
 
+        _logger.LogInformation(
+            "TV download path for {Show} S{Season:D2}: {Path}",
+            showName, seasonNumber, downloadPath);
+
         // Note: Don't create the directory here - qBittorrent will create it with proper permissions
 
         // Check disk space (use parent directory for check since target folder may not exist yet)

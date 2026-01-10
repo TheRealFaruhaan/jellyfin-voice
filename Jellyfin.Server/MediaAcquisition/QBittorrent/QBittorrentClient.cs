@@ -260,6 +260,15 @@ public class QBittorrentClient : IQBittorrentClient, IDisposable
 
         if (response.StatusCode != HttpStatusCode.Conflict)
         {
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _logger.LogWarning(
+                    "qBittorrent returned 403 Forbidden when trying to create category '{Category}' with save path '{SavePath}'. " +
+                    "This may be due to invalid path, permissions, or qBittorrent settings. Continuing without category creation.",
+                    category, savePath);
+                return; // Don't fail the download, just log the warning
+            }
+
             response.EnsureSuccessStatusCode();
         }
     }
