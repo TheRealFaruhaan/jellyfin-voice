@@ -98,6 +98,24 @@ public class DiscoveryMovieDto
     /// </summary>
     [JsonPropertyName("status")]
     public string? Status { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this movie exists in the Jellyfin library.
+    /// </summary>
+    [JsonPropertyName("existsInLibrary")]
+    public bool ExistsInLibrary { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Jellyfin item ID if it exists in the library.
+    /// </summary>
+    [JsonPropertyName("jellyfinItemId")]
+    public Guid? JellyfinItemId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this movie is marked as favorite by the current user.
+    /// </summary>
+    [JsonPropertyName("isFavorite")]
+    public bool IsFavorite { get; set; }
 }
 
 /// <summary>
@@ -200,6 +218,24 @@ public class DiscoveryTvShowDto
     /// </summary>
     [JsonPropertyName("externalIds")]
     public DiscoveryExternalIdsDto? ExternalIds { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this TV show exists in the Jellyfin library.
+    /// </summary>
+    [JsonPropertyName("existsInLibrary")]
+    public bool ExistsInLibrary { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Jellyfin item ID if it exists in the library.
+    /// </summary>
+    [JsonPropertyName("jellyfinItemId")]
+    public Guid? JellyfinItemId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this TV show is marked as favorite by the current user.
+    /// </summary>
+    [JsonPropertyName("isFavorite")]
+    public bool IsFavorite { get; set; }
 }
 
 /// <summary>

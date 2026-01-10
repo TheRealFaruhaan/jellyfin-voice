@@ -186,35 +186,35 @@ public class DisabledDiscoveryService : IDiscoveryService
     private static readonly DiscoveryPagedResultDto<DiscoveryTvShowDto> EmptyTvShows = new();
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyMovies);
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyMovies);
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyMovies);
 
     /// <inheritdoc />
-    public Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+    public Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult<DiscoveryMovieDto?>(null);
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyTvShows);
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyTvShows);
 
     /// <inheritdoc />
-    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+    public Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult(EmptyTvShows);
 
     /// <inheritdoc />
-    public Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+    public Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default)
         => Task.FromResult<DiscoveryTvShowDto?>(null);
 
     /// <inheritdoc />

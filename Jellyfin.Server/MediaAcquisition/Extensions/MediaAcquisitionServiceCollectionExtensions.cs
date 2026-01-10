@@ -92,6 +92,7 @@ public static class MediaAcquisitionServiceCollectionExtensions
 
         // Register repositories
         services.AddSingleton<ITorrentDownloadRepository, TorrentDownloadRepository>();
+        services.AddSingleton<IDiscoveryFavoriteRepository, DiscoveryFavoriteRepository>();
 
         // Register services
         services.AddSingleton<IMissingMediaService, MissingMediaService>();

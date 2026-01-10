@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Api;
 using Jellyfin.Api.Extensions;
+using Jellyfin.Server.MediaAcquisition.Data;
+using Jellyfin.Server.MediaAcquisition.Data.Entities;
 using Jellyfin.Server.MediaAcquisition.Indexers;
 using Jellyfin.Server.MediaAcquisition.Models;
 using Jellyfin.Server.MediaAcquisition.Services;
@@ -28,6 +30,7 @@ public class DiscoveryController : BaseJellyfinApiController
     private readonly ITorrentSearchService _searchService;
     private readonly ILibraryPathResolver _pathResolver;
     private readonly IDownloadManagerService _downloadManager;
+    private readonly IDiscoveryFavoriteRepository _favoriteRepository;
     private readonly ILogger<DiscoveryController> _logger;
 
     /// <summary>
@@ -37,18 +40,21 @@ public class DiscoveryController : BaseJellyfinApiController
     /// <param name="searchService">The torrent search service.</param>
     /// <param name="pathResolver">The library path resolver.</param>
     /// <param name="downloadManager">The download manager service.</param>
+    /// <param name="favoriteRepository">The favorites repository.</param>
     /// <param name="logger">The logger.</param>
     public DiscoveryController(
         IDiscoveryService discoveryService,
         ITorrentSearchService searchService,
         ILibraryPathResolver pathResolver,
         IDownloadManagerService downloadManager,
+        IDiscoveryFavoriteRepository favoriteRepository,
         ILogger<DiscoveryController> logger)
     {
         _discoveryService = discoveryService;
         _searchService = searchService;
         _pathResolver = pathResolver;
         _downloadManager = downloadManager;
+        _favoriteRepository = favoriteRepository;
         _logger = logger;
     }
 
@@ -67,7 +73,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.GetTrendingMoviesAsync(page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.GetTrendingMoviesAsync(page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -84,7 +91,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.GetPopularMoviesAsync(page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.GetPopularMoviesAsync(page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -105,7 +113,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.SearchMoviesAsync(query, year, page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.SearchMoviesAsync(query, year, page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -124,7 +133,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromRoute, Required] int tmdbId,
         CancellationToken cancellationToken = default)
     {
-        var movie = await _discoveryService.GetMovieDetailsAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var movie = await _discoveryService.GetMovieDetailsAsync(tmdbId, userId, cancellationToken).ConfigureAwait(false);
         if (movie == null)
         {
             return NotFound();
@@ -148,7 +158,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromRoute, Required] int tmdbId,
         CancellationToken cancellationToken = default)
     {
-        var movie = await _discoveryService.GetMovieDetailsAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var movie = await _discoveryService.GetMovieDetailsAsync(tmdbId, userId, cancellationToken).ConfigureAwait(false);
         if (movie == null)
         {
             return NotFound();
@@ -175,7 +186,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.GetTrendingTvShowsAsync(page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.GetTrendingTvShowsAsync(page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -192,7 +204,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.GetPopularTvShowsAsync(page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.GetPopularTvShowsAsync(page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -213,7 +226,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        var result = await _discoveryService.SearchTvShowsAsync(query, year, page, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var result = await _discoveryService.SearchTvShowsAsync(query, year, page, userId, cancellationToken).ConfigureAwait(false);
         return Ok(result);
     }
 
@@ -232,7 +246,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromRoute, Required] int tmdbId,
         CancellationToken cancellationToken = default)
     {
-        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, userId, cancellationToken).ConfigureAwait(false);
         if (show == null)
         {
             return NotFound();
@@ -284,7 +299,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromRoute, Required] int seasonNumber,
         CancellationToken cancellationToken = default)
     {
-        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, userId, cancellationToken).ConfigureAwait(false);
         if (show == null)
         {
             return NotFound();
@@ -313,7 +329,8 @@ public class DiscoveryController : BaseJellyfinApiController
         [FromRoute, Required] int episodeNumber,
         CancellationToken cancellationToken = default)
     {
-        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, cancellationToken).ConfigureAwait(false);
+        var userId = User.GetUserId();
+        var show = await _discoveryService.GetTvShowDetailsAsync(tmdbId, userId, cancellationToken).ConfigureAwait(false);
         if (show == null)
         {
             return NotFound();
@@ -544,5 +561,89 @@ public class DiscoveryController : BaseJellyfinApiController
             _logger.LogError(ex, "Failed to start TV show download for {Title}", request.Title);
             return BadRequest(ex.Message);
         }
+    }
+
+    // ===== FAVORITES =====
+
+    /// <summary>
+    /// Gets all favorites for the current user.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">Favorites returned.</response>
+    /// <returns>List of user's favorites.</returns>
+    [HttpGet("Favorites")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<DiscoveryFavorite>>> GetFavorites(CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var favorites = await _favoriteRepository.GetByUserIdAsync(userId, cancellationToken).ConfigureAwait(false);
+        return Ok(favorites);
+    }
+
+    /// <summary>
+    /// Adds a movie or TV show to favorites.
+    /// </summary>
+    /// <param name="tmdbId">The TMDB ID.</param>
+    /// <param name="mediaType">The media type (movie or tvshow).</param>
+    /// <param name="title">The title for display.</param>
+    /// <param name="posterPath">The poster path.</param>
+    /// <param name="year">The release/first air year.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">Favorite added.</response>
+    /// <returns>No content.</returns>
+    [HttpPost("Favorites")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> AddFavorite(
+        [FromQuery, Required] int tmdbId,
+        [FromQuery, Required] string mediaType,
+        [FromQuery] string? title,
+        [FromQuery] string? posterPath,
+        [FromQuery] int? year,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+
+        var favorite = new DiscoveryFavorite
+        {
+            UserId = userId,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Year = year,
+            FavoritedAt = DateTime.UtcNow
+        };
+
+        await _favoriteRepository.AddAsync(favorite, cancellationToken).ConfigureAwait(false);
+
+        return Ok();
+    }
+
+    /// <summary>
+    /// Removes a movie or TV show from favorites.
+    /// </summary>
+    /// <param name="tmdbId">The TMDB ID.</param>
+    /// <param name="mediaType">The media type (movie or tvshow).</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="204">Favorite removed.</response>
+    /// <response code="404">Favorite not found.</response>
+    /// <returns>No content.</returns>
+    [HttpDelete("Favorites")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> RemoveFavorite(
+        [FromQuery, Required] int tmdbId,
+        [FromQuery, Required] string mediaType,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        var removed = await _favoriteRepository.RemoveAsync(userId, tmdbId, mediaType, cancellationToken).ConfigureAwait(false);
+
+        if (!removed)
+        {
+            return NotFound();
+        }
+
+        return NoContent();
     }
 }

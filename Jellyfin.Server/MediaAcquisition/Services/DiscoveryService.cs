@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Server.MediaAcquisition.Configuration;
+using Jellyfin.Server.MediaAcquisition.Data;
 using Jellyfin.Server.MediaAcquisition.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     private readonly ILogger<DiscoveryService> _logger;
     private readonly MediaAcquisitionOptions _options;
     private readonly TMDbClient? _tmdbClient;
+    private readonly IDiscoveryFavoriteRepository _favoriteRepository;
     private readonly bool _isConfigured;
     private bool _disposed;
 
@@ -37,14 +39,17 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     /// <param name="cache">The memory cache.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="options">The configuration options.</param>
+    /// <param name="favoriteRepository">The favorites repository.</param>
     public DiscoveryService(
         IMemoryCache cache,
         ILogger<DiscoveryService> logger,
-        IOptions<MediaAcquisitionOptions> options)
+        IOptions<MediaAcquisitionOptions> options,
+        IDiscoveryFavoriteRepository favoriteRepository)
     {
         _cache = cache;
         _logger = logger;
         _options = options.Value;
+        _favoriteRepository = favoriteRepository;
 
         if (string.IsNullOrEmpty(_options.TmdbApiKey))
         {
@@ -67,7 +72,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -78,22 +83,62 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryMovieDto>? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached results to avoid mutating the cache
+            var moviesCopy = cached.Results.Select(m => new DiscoveryMovieDto
+            {
+                Id = m.Id,
+                Title = m.Title,
+                OriginalTitle = m.OriginalTitle,
+                Overview = m.Overview,
+                PosterPath = m.PosterPath,
+                BackdropPath = m.BackdropPath,
+                ReleaseDate = m.ReleaseDate,
+                ReleaseYear = m.ReleaseYear,
+                VoteAverage = m.VoteAverage,
+                VoteCount = m.VoteCount,
+                Genres = m.Genres != null ? new List<string>(m.Genres) : new List<string>(),
+                Runtime = m.Runtime,
+                ImdbId = m.ImdbId,
+                Tagline = m.Tagline,
+                Status = m.Status,
+                ExistsInLibrary = m.ExistsInLibrary,
+                JellyfinItemId = m.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            var result = new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateMovieFavoritesAsync(moviesCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
+            return result;
         }
 
         try
         {
             var result = await _tmdbClient.GetTrendingMoviesAsync(TimeWindow.Week, page, _options.TmdbLanguage, cancellationToken).ConfigureAwait(false);
 
+            var movies = result.Results.Select(MapToMovieDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToMovieDto).ToList()
+                Results = await PopulateMovieFavoritesAsync(movies, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            // Cache without favorites
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = movies
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
+
             return dto;
         }
         catch (Exception ex)
@@ -104,7 +149,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -115,22 +160,59 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryMovieDto>? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached results to avoid mutating the cache
+            var moviesCopy = cached.Results.Select(m => new DiscoveryMovieDto
+            {
+                Id = m.Id,
+                Title = m.Title,
+                OriginalTitle = m.OriginalTitle,
+                Overview = m.Overview,
+                PosterPath = m.PosterPath,
+                BackdropPath = m.BackdropPath,
+                ReleaseDate = m.ReleaseDate,
+                ReleaseYear = m.ReleaseYear,
+                VoteAverage = m.VoteAverage,
+                VoteCount = m.VoteCount,
+                Genres = m.Genres != null ? new List<string>(m.Genres) : new List<string>(),
+                Runtime = m.Runtime,
+                ImdbId = m.ImdbId,
+                Tagline = m.Tagline,
+                Status = m.Status,
+                ExistsInLibrary = m.ExistsInLibrary,
+                JellyfinItemId = m.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            return new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateMovieFavoritesAsync(moviesCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
         }
 
         try
         {
             var result = await _tmdbClient.GetMoviePopularListAsync(_options.TmdbLanguage, page, null, cancellationToken).ConfigureAwait(false);
 
+            var movies = result.Results.Select(MapToMovieDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToMovieDto).ToList()
+                Results = await PopulateMovieFavoritesAsync(movies, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = movies
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
             return dto;
         }
         catch (Exception ex)
@@ -141,7 +223,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -157,22 +239,59 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryMovieDto>? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached results to avoid mutating the cache
+            var moviesCopy = cached.Results.Select(m => new DiscoveryMovieDto
+            {
+                Id = m.Id,
+                Title = m.Title,
+                OriginalTitle = m.OriginalTitle,
+                Overview = m.Overview,
+                PosterPath = m.PosterPath,
+                BackdropPath = m.BackdropPath,
+                ReleaseDate = m.ReleaseDate,
+                ReleaseYear = m.ReleaseYear,
+                VoteAverage = m.VoteAverage,
+                VoteCount = m.VoteCount,
+                Genres = m.Genres != null ? new List<string>(m.Genres) : new List<string>(),
+                Runtime = m.Runtime,
+                ImdbId = m.ImdbId,
+                Tagline = m.Tagline,
+                Status = m.Status,
+                ExistsInLibrary = m.ExistsInLibrary,
+                JellyfinItemId = m.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            return new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateMovieFavoritesAsync(moviesCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
         }
 
         try
         {
             var result = await _tmdbClient.SearchMovieAsync(query, page, false, year ?? 0, null, 0, cancellationToken).ConfigureAwait(false);
 
+            var movies = result.Results.Select(MapToMovieDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToMovieDto).ToList()
+                Results = await PopulateMovieFavoritesAsync(movies, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryMovieDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = movies
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
             return dto;
         }
         catch (Exception ex)
@@ -183,7 +302,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -193,9 +312,32 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         var cacheKey = $"movie-details-{tmdbId}-{_options.TmdbLanguage}";
 
-        if (_cache.TryGetValue(cacheKey, out DiscoveryMovieDto? cached))
+        if (_cache.TryGetValue(cacheKey, out DiscoveryMovieDto? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached result to avoid mutating the cache
+            var movieCopy = new DiscoveryMovieDto
+            {
+                Id = cached.Id,
+                Title = cached.Title,
+                OriginalTitle = cached.OriginalTitle,
+                Overview = cached.Overview,
+                PosterPath = cached.PosterPath,
+                BackdropPath = cached.BackdropPath,
+                ReleaseDate = cached.ReleaseDate,
+                ReleaseYear = cached.ReleaseYear,
+                VoteAverage = cached.VoteAverage,
+                VoteCount = cached.VoteCount,
+                Genres = cached.Genres != null ? new List<string>(cached.Genres) : new List<string>(),
+                Runtime = cached.Runtime,
+                ImdbId = cached.ImdbId,
+                Tagline = cached.Tagline,
+                Status = cached.Status,
+                ExistsInLibrary = cached.ExistsInLibrary,
+                JellyfinItemId = cached.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            };
+
+            return await PopulateMovieFavoriteAsync(movieCopy, userId, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -227,7 +369,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
             };
 
             _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
-            return dto;
+            return await PopulateMovieFavoriteAsync(dto, userId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -237,7 +379,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -248,22 +390,63 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached results to avoid mutating the cache
+            var showsCopy = cached.Results.Select(s => new DiscoveryTvShowDto
+            {
+                Id = s.Id,
+                Name = s.Name,
+                OriginalName = s.OriginalName,
+                Overview = s.Overview,
+                PosterPath = s.PosterPath,
+                BackdropPath = s.BackdropPath,
+                FirstAirDate = s.FirstAirDate,
+                FirstAirYear = s.FirstAirYear,
+                VoteAverage = s.VoteAverage,
+                VoteCount = s.VoteCount,
+                Genres = s.Genres != null ? new List<string>(s.Genres) : new List<string>(),
+                NumberOfSeasons = s.NumberOfSeasons,
+                NumberOfEpisodes = s.NumberOfEpisodes,
+                Status = s.Status,
+                Seasons = s.Seasons != null ? new List<DiscoverySeasonDto>(s.Seasons) : new List<DiscoverySeasonDto>(),
+                ExternalIds = s.ExternalIds,
+                ExistsInLibrary = s.ExistsInLibrary,
+                JellyfinItemId = s.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            var result = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateTvShowFavoritesAsync(showsCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
+            return result;
         }
 
         try
         {
             var result = await _tmdbClient.GetTrendingTvAsync(TimeWindow.Week, page, _options.TmdbLanguage, cancellationToken).ConfigureAwait(false);
 
+            var shows = result.Results.Select(MapToTvShowDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToTvShowDto).ToList()
+                Results = await PopulateTvShowFavoritesAsync(shows, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            // Cache without favorites
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = shows
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
+
             return dto;
         }
         catch (Exception ex)
@@ -274,7 +457,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -285,22 +468,60 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached results to avoid mutating the cache
+            var showsCopy = cached.Results.Select(s => new DiscoveryTvShowDto
+            {
+                Id = s.Id,
+                Name = s.Name,
+                OriginalName = s.OriginalName,
+                Overview = s.Overview,
+                PosterPath = s.PosterPath,
+                BackdropPath = s.BackdropPath,
+                FirstAirDate = s.FirstAirDate,
+                FirstAirYear = s.FirstAirYear,
+                VoteAverage = s.VoteAverage,
+                VoteCount = s.VoteCount,
+                Genres = s.Genres != null ? new List<string>(s.Genres) : new List<string>(),
+                NumberOfSeasons = s.NumberOfSeasons,
+                NumberOfEpisodes = s.NumberOfEpisodes,
+                Status = s.Status,
+                Seasons = s.Seasons != null ? new List<DiscoverySeasonDto>(s.Seasons) : new List<DiscoverySeasonDto>(),
+                ExternalIds = s.ExternalIds,
+                ExistsInLibrary = s.ExistsInLibrary,
+                JellyfinItemId = s.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            return new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateTvShowFavoritesAsync(showsCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
         }
 
         try
         {
             var result = await _tmdbClient.GetTvShowPopularAsync(page, _options.TmdbLanguage, cancellationToken).ConfigureAwait(false);
 
+            var shows = result.Results.Select(MapToTvShowDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToTvShowDto).ToList()
+                Results = await PopulateTvShowFavoritesAsync(shows, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = shows
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
             return dto;
         }
         catch (Exception ex)
@@ -311,7 +532,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -331,7 +552,38 @@ public class DiscoveryService : IDiscoveryService, IDisposable
         if (_cache.TryGetValue(cacheKey, out DiscoveryPagedResultDto<DiscoveryTvShowDto>? cached) && cached != null)
         {
             _logger.LogDebug("Returning cached TV show search results for query: {Query}", query);
-            return cached;
+
+            // Create a copy of the cached results to avoid mutating the cache
+            var showsCopy = cached.Results.Select(s => new DiscoveryTvShowDto
+            {
+                Id = s.Id,
+                Name = s.Name,
+                OriginalName = s.OriginalName,
+                Overview = s.Overview,
+                PosterPath = s.PosterPath,
+                BackdropPath = s.BackdropPath,
+                FirstAirDate = s.FirstAirDate,
+                FirstAirYear = s.FirstAirYear,
+                VoteAverage = s.VoteAverage,
+                VoteCount = s.VoteCount,
+                Genres = s.Genres != null ? new List<string>(s.Genres) : new List<string>(),
+                NumberOfSeasons = s.NumberOfSeasons,
+                NumberOfEpisodes = s.NumberOfEpisodes,
+                Status = s.Status,
+                Seasons = s.Seasons != null ? new List<DiscoverySeasonDto>(s.Seasons) : new List<DiscoverySeasonDto>(),
+                ExternalIds = s.ExternalIds,
+                ExistsInLibrary = s.ExistsInLibrary,
+                JellyfinItemId = s.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            }).ToList();
+
+            return new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = cached.Page,
+                TotalPages = cached.TotalPages,
+                TotalResults = cached.TotalResults,
+                Results = await PopulateTvShowFavoritesAsync(showsCopy, userId, cancellationToken).ConfigureAwait(false)
+            };
         }
 
         try
@@ -349,15 +601,23 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
             _logger.LogInformation("TMDB returned {Count} TV shows for query: {Query}, total results: {Total}", result.Results.Count, query, result.TotalResults);
 
+            var shows = result.Results.Select(MapToTvShowDto).ToList();
             var dto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
             {
                 Page = result.Page,
                 TotalPages = result.TotalPages,
                 TotalResults = result.TotalResults,
-                Results = result.Results.Select(MapToTvShowDto).ToList()
+                Results = await PopulateTvShowFavoritesAsync(shows, userId, cancellationToken).ConfigureAwait(false)
             };
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
+            var cacheDto = new DiscoveryPagedResultDto<DiscoveryTvShowDto>
+            {
+                Page = dto.Page,
+                TotalPages = dto.TotalPages,
+                TotalResults = dto.TotalResults,
+                Results = shows
+            };
+            _cache.Set(cacheKey, cacheDto, TimeSpan.FromMinutes(CacheDurationMinutes));
             return dto;
         }
         catch (Exception ex)
@@ -368,7 +628,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, CancellationToken cancellationToken = default)
+    public async Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default)
     {
         if (!_isConfigured || _tmdbClient == null)
         {
@@ -378,9 +638,33 @@ public class DiscoveryService : IDiscoveryService, IDisposable
 
         var cacheKey = $"tvshow-details-{tmdbId}-{_options.TmdbLanguage}";
 
-        if (_cache.TryGetValue(cacheKey, out DiscoveryTvShowDto? cached))
+        if (_cache.TryGetValue(cacheKey, out DiscoveryTvShowDto? cached) && cached != null)
         {
-            return cached;
+            // Create a copy of the cached result to avoid mutating the cache
+            var showCopy = new DiscoveryTvShowDto
+            {
+                Id = cached.Id,
+                Name = cached.Name,
+                OriginalName = cached.OriginalName,
+                Overview = cached.Overview,
+                PosterPath = cached.PosterPath,
+                BackdropPath = cached.BackdropPath,
+                FirstAirDate = cached.FirstAirDate,
+                FirstAirYear = cached.FirstAirYear,
+                VoteAverage = cached.VoteAverage,
+                VoteCount = cached.VoteCount,
+                Genres = cached.Genres != null ? new List<string>(cached.Genres) : new List<string>(),
+                NumberOfSeasons = cached.NumberOfSeasons,
+                NumberOfEpisodes = cached.NumberOfEpisodes,
+                Status = cached.Status,
+                Seasons = cached.Seasons != null ? new List<DiscoverySeasonDto>(cached.Seasons) : new List<DiscoverySeasonDto>(),
+                ExternalIds = cached.ExternalIds,
+                ExistsInLibrary = cached.ExistsInLibrary,
+                JellyfinItemId = cached.JellyfinItemId,
+                IsFavorite = false // Will be populated
+            };
+
+            return await PopulateTvShowFavoriteAsync(showCopy, userId, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -426,7 +710,7 @@ public class DiscoveryService : IDiscoveryService, IDisposable
             };
 
             _cache.Set(cacheKey, dto, TimeSpan.FromMinutes(CacheDurationMinutes));
-            return dto;
+            return await PopulateTvShowFavoriteAsync(dto, userId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -576,6 +860,94 @@ public class DiscoveryService : IDiscoveryService, IDisposable
         }
 
         _disposed = true;
+    }
+
+    private async Task<List<DiscoveryMovieDto>> PopulateMovieFavoritesAsync(List<DiscoveryMovieDto> movies, Guid userId, CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty || movies.Count == 0)
+        {
+            return movies;
+        }
+
+        try
+        {
+            var tmdbIds = movies.Select(m => m.Id).ToList();
+            var favorites = await _favoriteRepository.GetFavoriteStatusAsync(userId, tmdbIds, "movie", cancellationToken).ConfigureAwait(false);
+
+            foreach (var movie in movies)
+            {
+                movie.IsFavorite = favorites.TryGetValue(movie.Id, out var isFav) && isFav;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to populate movie favorites for user {UserId}", userId);
+        }
+
+        return movies;
+    }
+
+    private async Task<List<DiscoveryTvShowDto>> PopulateTvShowFavoritesAsync(List<DiscoveryTvShowDto> shows, Guid userId, CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty || shows.Count == 0)
+        {
+            return shows;
+        }
+
+        try
+        {
+            var tmdbIds = shows.Select(s => s.Id).ToList();
+            var favorites = await _favoriteRepository.GetFavoriteStatusAsync(userId, tmdbIds, "tvshow", cancellationToken).ConfigureAwait(false);
+
+            foreach (var show in shows)
+            {
+                show.IsFavorite = favorites.TryGetValue(show.Id, out var isFav) && isFav;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to populate TV show favorites for user {UserId}", userId);
+        }
+
+        return shows;
+    }
+
+    private async Task<DiscoveryMovieDto?> PopulateMovieFavoriteAsync(DiscoveryMovieDto? movie, Guid userId, CancellationToken cancellationToken)
+    {
+        if (movie == null || userId == Guid.Empty)
+        {
+            return movie;
+        }
+
+        try
+        {
+            movie.IsFavorite = await _favoriteRepository.IsFavoritedAsync(userId, movie.Id, "movie", cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to populate movie favorite for user {UserId}", userId);
+        }
+
+        return movie;
+    }
+
+    private async Task<DiscoveryTvShowDto?> PopulateTvShowFavoriteAsync(DiscoveryTvShowDto? show, Guid userId, CancellationToken cancellationToken)
+    {
+        if (show == null || userId == Guid.Empty)
+        {
+            return show;
+        }
+
+        try
+        {
+            show.IsFavorite = await _favoriteRepository.IsFavoritedAsync(userId, show.Id, "tvshow", cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to populate TV show favorite for user {UserId}", userId);
+        }
+
+        return show;
     }
 
     private DiscoveryMovieDto MapToMovieDto(SearchMovie movie)

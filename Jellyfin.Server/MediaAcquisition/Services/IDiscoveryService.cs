@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Server.MediaAcquisition.Models;
@@ -13,17 +14,19 @@ public interface IDiscoveryService
     /// Gets trending movies from TMDB.
     /// </summary>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of movies.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetTrendingMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets popular movies from TMDB.
     /// </summary>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of movies.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> GetPopularMoviesAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Searches for movies on TMDB.
@@ -31,33 +34,37 @@ public interface IDiscoveryService
     /// <param name="query">The search query.</param>
     /// <param name="year">Optional year filter.</param>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of movies.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryMovieDto>> SearchMoviesAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets movie details from TMDB.
     /// </summary>
     /// <param name="tmdbId">The TMDB movie ID.</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The movie details.</returns>
-    Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, CancellationToken cancellationToken = default);
+    Task<DiscoveryMovieDto?> GetMovieDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets trending TV shows from TMDB.
     /// </summary>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of TV shows.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetTrendingTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets popular TV shows from TMDB.
     /// </summary>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of TV shows.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> GetPopularTvShowsAsync(int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Searches for TV shows on TMDB.
@@ -65,17 +72,19 @@ public interface IDiscoveryService
     /// <param name="query">The search query.</param>
     /// <param name="year">Optional year filter.</param>
     /// <param name="page">The page number (1-based).</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paged result of TV shows.</returns>
-    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, CancellationToken cancellationToken = default);
+    Task<DiscoveryPagedResultDto<DiscoveryTvShowDto>> SearchTvShowsAsync(string query, int? year = null, int page = 1, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets TV show details from TMDB.
     /// </summary>
     /// <param name="tmdbId">The TMDB TV show ID.</param>
+    /// <param name="userId">The user ID for favorites.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The TV show details.</returns>
-    Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, CancellationToken cancellationToken = default);
+    Task<DiscoveryTvShowDto?> GetTvShowDetailsAsync(int tmdbId, Guid userId = default, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets season details from TMDB.

@@ -21,7 +21,7 @@ namespace Jellyfin.Server.MediaAcquisition.Controllers;
 /// </summary>
 [ApiController]
 [Route("[controller]")]
-[Authorize(Policy = "RequiresElevation")]
+[Authorize]
 public class MediaAcquisitionController : BaseJellyfinApiController
 {
     private readonly IMissingMediaService _missingMediaService;
@@ -54,6 +54,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="200">Connection status returned.</response>
     /// <returns>Connection status.</returns>
     [HttpGet("Status")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<ConnectionStatusDto>> GetStatus(CancellationToken cancellationToken)
     {
@@ -78,6 +79,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="404">Series not found.</response>
     /// <returns>List of missing episodes.</returns>
     [HttpGet("Missing/Episodes/{seriesId}")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IReadOnlyList<MissingEpisodeInfo>>> GetMissingEpisodes(
@@ -97,6 +99,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="200">Missing episodes returned.</response>
     /// <returns>List of missing episodes.</returns>
     [HttpGet("Missing/Episodes/{seriesId}/Season/{seasonNumber}")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MissingEpisodeInfo>>> GetMissingEpisodesForSeason(
         [FromRoute, Required] Guid seriesId,
@@ -115,6 +118,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="200">Missing episodes returned.</response>
     /// <returns>List of missing episodes.</returns>
     [HttpGet("Missing/Episodes")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<MissingEpisodeInfo>>> GetAllMissingEpisodes(
         [FromQuery] int limit = 100,
@@ -132,6 +136,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="200">Search results returned.</response>
     /// <returns>List of torrent search results.</returns>
     [HttpPost("Search/Episode")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TorrentSearchResult>>> SearchEpisode(
         [FromBody, Required] SearchEpisodeRequest request,
@@ -154,6 +159,7 @@ public class MediaAcquisitionController : BaseJellyfinApiController
     /// <response code="200">Search results returned.</response>
     /// <returns>List of torrent search results.</returns>
     [HttpPost("Search/Movie")]
+    [Authorize(Policy = "RequiresElevation")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TorrentSearchResult>>> SearchMovie(
         [FromBody, Required] SearchMovieRequest request,
